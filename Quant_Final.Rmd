@@ -1,0 +1,33 @@
+---
+title: "Quantative Methods Final Project"
+subtitle: "Forest Fire Time Series Data"
+author: Nathan Korinek
+output: 
+  html_document:
+    css: "lab.css"
+---
+
+```{r setup, include=FALSE}
+# Setup the environment
+library(knitr)
+knitr::opts_chunk$set(fig.align='center',fig.width=10, fig.height=6, fig.path='Figs/',  warning=FALSE, echo=TRUE, eval=TRUE, message=FALSE)
+
+r = getOption("repos")
+r["CRAN"] = "http://cran.us.r-project.org"
+options(repos = r)
+```
+
+```{r, echo=T, eval=T, results='hide'}
+library(maptools)
+library(maps)
+library(raster)
+library(spdep)
+library(ggmap)
+library(ggsn)
+
+# Load shape file
+fire_data<-st_read("Quant_Fire_Data/Quant_Fire_Data.shp")
+# Set the right projection information
+# nepal<-st_set_crs(nepal, 4326)
+
+```
