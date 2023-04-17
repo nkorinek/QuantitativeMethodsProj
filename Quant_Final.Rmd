@@ -1,7 +1,7 @@
 ---
 title: "Quantative Methods Final Project"
 subtitle: "Forest Fire Time Series Data"
-author: Nathan Korinek
+author: Nathan Korinek, Claire Simpson
 output: 
   html_document:
     css: "lab.css"
@@ -28,6 +28,5 @@ library(ggsn)
 # Load shape file
 fire_data<-st_read("Quant_Fire_Data/Quant_Fire_Data.shp")
 # Set the right projection information
-# nepal<-st_set_crs(nepal, 4326)
-
+fire_data<-st_set_crs(fire_data, 4326)
 ```
