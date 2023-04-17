@@ -29,4 +29,5 @@ library(ggsn)
 fire_data<-st_read("Quant_Fire_Data/Quant_Fire_Data.shp")
 # Set the right projection information
 fire_data<-st_set_crs(fire_data, 4326)
+
 ```
