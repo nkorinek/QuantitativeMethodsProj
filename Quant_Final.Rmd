@@ -21,13 +21,17 @@ options(repos = r)
 library(maptools)
 library(maps)
 library(raster)
+library(spatstat)
 library(spdep)
 library(ggmap)
 library(ggsn)
 
 # Load shape file
 fire_data<-st_read("Quant_Fire_Data/Quant_Fire_Data.shp")
+
 # Set the right projection information
 fire_data<-st_set_crs(fire_data, 4326)
 
+# Reproject the fire data to EPSG:26913, which represents UTM projection
+projLocs<-st_transform(fire_data, CRS("+init=epsg:26913"))
 ```
