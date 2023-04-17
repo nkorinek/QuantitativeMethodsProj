@@ -35,3 +35,98 @@ fire_data<-st_set_crs(fire_data, 4326)
 # Reproject the fire data to EPSG:26913, which represents UTM projection
 projLocs<-st_transform(fire_data, CRS("+init=epsg:26913"))
 ```
+
+
+Clustering Analysis
+```{r, echo=T, eval=T, results='hide'}
+#kmeans
+```
+
+
+Random Forests Analysis
+
+```{r, echo=T, eval=T, results='hide'}
+#random forests
+library(randomForest) 
+library(tidyr)
+library(sf)
+library(caret)
+library(doParallel)
+install.pacakges("rlang")#needed to fix a caret dependency/version issue
+library(caret)
+
+# if installing caret doesnt work try:
+# library(devtools)
+# devtools::install_url("https://cran.r-project.org/src/contrib/caret_6.0-78.tar.gz")
+
+#subset out columns from dataset (remove non-predictors/targets)
+names <- names(fire_data)
+to_remove <- c("Event_ID", "geometry", "index_righ")
+keep_names <- names[! names %in% to_remove]
+keep_names
+fire_data_4_model <- fire_data[keep_names]
+fire_data_4_model <- fire_data_4_model %>% st_drop_geometry()
+
+#check for complete cases (will remove everything bc some columns are blank...)
+# fire_data_4_model <- fire_data_4_model[complete.cases(fire_data_4_model), ]
+
+#drop row where column 'elevation' is NA
+fire_data_4_model<- fire_data_4_model %>% tidyr::drop_na(elevation)
+
+#drop any column where there is an NA value
+fire_data_4_model<-fire_data_4_model[ , apply(fire_data_4_model, 2, function(x) !any(is.na(x)))]
+
+#TEMPORARY until we do interpolation to fill missing values
+fire_data_4_model[is.na(fire_data_4_model)] <- 0
+
+
+#Run Recursive Feature Elimination
+
+#RFE parameters
+subsets <- seq(20, 700, by=20)#c(1:(length(fire_data_4_model)-1))
+# seeds <- vector(mode = "list", length = 51)
+seeds <- vector(mode = "list", length = 35)
+for(i in 1:75) seeds[[i]] <- sample.int(1000, length(subsets) + 1)
+seeds[[76]] <- sample.int(1000, 1)
+
+ctrl.RFE <- caret::rfeControl(functions = rfFuncs,
+                       method = "repeatedcv",
+                       number = 15,
+                       repeats = 5,
+                       seeds = seeds, 
+                       verbose = FALSE)
+
+#this code makes it run in parallel
+c1 <- makeCluster(detectCores()-1)
+registerDoParallel(c1)
+set.seed(9)
+target <- c('NApr2021')
+rf.RFE <- rfe(x = fire_data_4_model[! fire_data_4_model %in% target],
+              y = fire_data_4_model$NApr2021,
+              sizes = subsets,
+              # na.rm=TRUE,
+              rfeControl = ctrl.RFE,
+              allowParallel = TRUE
+)
+stopCluster(c1)              
+
+gc()
+
+# Look at the results
+rf.RFE
+
+rf.RFE$fit
+
+rf.RFE$results
+
+plot(rf.RFE) # default plot is for Accuracy, but it can also be changed to Kappa
+plot(rf.RFE, metric="Kappa", main='RFE Kappa')
+plot(rf.RFE, metric="Accuracy", main='RFE Accuracy')
+
+
+
+
+points_df<- as.data.frame(fire_data)
+
+model.rf <- randomforest()
+```
