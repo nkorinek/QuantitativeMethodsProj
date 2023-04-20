@@ -44,7 +44,7 @@ simple_fire_data<-st_set_crs(simple_fire_data, 4326)
 # Reproject the fire data to EPSG:26913, which represents UTM projection
 simple_projLocs<-st_transform(simple_fire_data, CRS("+init=epsg:26913"))
 ```
-```
+
 
 
 Clustering Analysis
@@ -57,9 +57,10 @@ Add Columns for Training vs. Test data
 Test_Ids = c("CO3741010757920121016","NM3700010423620110526","CO3894510543620120617","NM3692010445620110612","CO3747210346920110607","NM3696310515520100523")
 Val_Ids = c('CO3726810830320120622', 'CO3935510767920100507', 'CO4005110538520100906', 'CO3943610521720120326')
 
+fire_data['isTest'] <-'Train'
+fire_data$isTest[fire_data$Event_ID %in% Test_Ids]<-'Test'
+fire_data$isTest[fire_data$Event_ID %in% Val_Ids]<-'Validation'
 
-fire_data['isTest'] <- ifelse(fire_data$Event_ID %in% Test_Ids, 'Test', 'Train')
-fire_data['isTest'] <- ifelse((fire_data$Event_ID %in% Val_Ids) && !(fire_data$Event_ID %in% Test_Ids), 'Validation', 'Train')
 
 ```
 
@@ -76,7 +77,7 @@ fire_data$fire_date <- as.Date(paste(fire_data$Year, fire_data$Month, fire_data$
 #   col_date > fire_data$fire_date
 # })]
 my_df <- fire_data
-selected_names <- names(my_df)[8:799]
+selected_names <- names(my_df)[8:799] #all names with var-month-year
 # Vector of month names
 month_names <- c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 
