@@ -42,8 +42,79 @@ Clustering Analysis
 #kmeans
 ```
 
+Add Columns for Training vs. Test data
+```{r, echo=T, eval=T, results='hide'}
+Test_Ids = c("CO3741010757920121016","NM3700010423620110526","CO3894510543620120617","NM3692010445620110612","CO3747210346920110607","NM3696310515520100523")
+Val_Ids = c('CO3726810830320120622', 'CO3935510767920100507', 'CO4005110538520100906', 'CO3943610521720120326')
+
+
+fire_data['isTest'] <- ifelse(fire_data$Event_ID %in% Test_Ids, 'Test', 'Train')
+fire_data['isTest'] <- ifelse((fire_data$Event_ID %in% Val_Ids) && !(fire_data$Event_ID %in% Test_Ids), 'Validation', 'Train')
+
+```
+
+
+Split data into pre fire and post fire data
+```{r, echo=T, eval=T, results='hide'}
+
+# Convert fire_date to a Date object
+fire_data$fire_date <- as.Date(paste(fire_data$Year, fire_data$Month, fire_data$Day, sep = "-"))
+
+# Find the columns that occurred after the fire date
+# after_fire_date_cols <- names(fire_data)[sapply(names(fire_data), function(col_name) {
+#   col_date <- as.Date(paste0("01-", substring(col_name, 2)), format = "%d%b%Y")
+#   col_date > fire_data$fire_date
+# })]
+my_df <- fire_data
+selected_names <- names(my_df)[8:799]
+# Vector of month names
+month_names <- c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+after_fire_date_cols <- selected_names[sapply(selected_names, function(col_name) {  
+  col_year <- as.numeric(substr(col_name, 5,9))
+  col_month <- substr(col_name,2,4)
+  
+  # Get the index of the month abbreviation in the month_names vector
+  month_index <- match(col_month, month_names)
+  
+  # Convert the index to a numeric value
+  month_num <- as.numeric(formatC(month_index, width = 2, format = "d", flag = "0"))
+
+  col_date <- as.Date(paste(col_year, month_num, 20, sep = "-"))
+  if(col_date > my_df$fire_date){
+    # print(c(col_date,my_df$fire_date))
+    return (col_name)
+
+  }else{
+    FALSE
+  }
+  # if (col_date > my_df$fire_date){
+  #   return (col_name)
+  # }
+  
+  # if (substr(col_name, 1, 1) == "Y") {
+  #   col_year <- as.numeric(substr(col_name, 2))
+  #   col_month <- as.numeric(substr(my_df[paste0("M", col_year)], 2))
+  #   col_day <- as.numeric(substr(my_df[paste0("D", col_year)], 2))
+  #   col_date <- as.Date(paste(col_year, col_month, col_day, sep = "-"))
+  #   col_date > my_df$fire_date
+  # } else {
+  #   FALSE
+  # }
+})]
+# selected_names
+
+# Create input and output data frames
+input_df <- my_df[, c("fire_date", after_fire_date_cols)]
+output_df <- my_df[, !(names(my_df) %in% c("fire_date", after_fire_date_cols))]
+```
 
 Random Forests Analysis
+
+We will fire run recursive feature elimination to get a sense of which predictor
+variables are the most important. We first need to prepare the data for input, 
+including transforming the data to remove the seasonal fluctuations (make it
+stationary): 
 
 ```{r, echo=T, eval=T, results='hide'}
 #random forests
@@ -123,10 +194,24 @@ plot(rf.RFE) # default plot is for Accuracy, but it can also be changed to Kappa
 plot(rf.RFE, metric="Kappa", main='RFE Kappa')
 plot(rf.RFE, metric="Accuracy", main='RFE Accuracy')
 
+```
+
+We now can run the Random Forests model.
+
+Options for RF strategies:
+1.) create n RF models, one for each timestep we want to predict. Say, 12 different RF models, 
+1 for each of the 12 months in the second year after the fire. We fire need to create 
+12 training and test sets, where the training data consists of the 12 months immediately 
+preeceeding the fire
+
+2.) Create 1 RF model where there is an input predictor variable (feature) that 
+tells the model which timestep after the fire the model is supposed to predict
+
+```{r, echo=T, eval=T, results='hide'}
 
 
+# points_df<- as.data.frame(fire_data)
 
-points_df<- as.data.frame(fire_data)
 
 model.rf <- randomforest()
 ```
