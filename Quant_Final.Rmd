@@ -34,6 +34,16 @@ fire_data<-st_set_crs(fire_data, 4326)
 
 # Reproject the fire data to EPSG:26913, which represents UTM projection
 projLocs<-st_transform(fire_data, CRS("+init=epsg:26913"))
+
+# Load shape file
+simple_fire_data<-st_read("Simplified_Quant_Fire_Data/Simplified_Quant_Fire_Data.shp")
+
+# Set the right projection information
+simple_fire_data<-st_set_crs(simple_fire_data, 4326)
+
+# Reproject the fire data to EPSG:26913, which represents UTM projection
+simple_projLocs<-st_transform(simple_fire_data, CRS("+init=epsg:26913"))
+```
 ```
 
 
