@@ -52,7 +52,7 @@ Clustering Analysis
 #kmeans
 ```
 
-Add Columns for Training vs. Test data
+Add Columns for Training vs. Test vs Validation data
 ```{r, echo=T, eval=T, results='hide'}
 Test_Ids = c("CO3741010757920121016","NM3700010423620110526","CO3894510543620120617","NM3692010445620110612","CO3747210346920110607","NM3696310515520100523")
 Val_Ids = c('CO3726810830320120622', 'CO3935510767920100507', 'CO4005110538520100906', 'CO3943610521720120326')
@@ -76,11 +76,96 @@ fire_data$fire_date <- as.Date(paste(fire_data$Year, fire_data$Month, fire_data$
 #   col_date <- as.Date(paste0("01-", substring(col_name, 2)), format = "%d%b%Y")
 #   col_date > fire_data$fire_date
 # })]
-my_df <- fire_data
+my_df <- fire_data %>% st_drop_geometry()
+
 selected_names <- names(my_df)[8:799] #all names with var-month-year
 # Vector of month names
 month_names <- c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 
+#get new column names
+attr_list <- list()
+precip_list <- list()
+temp_list <- list()
+
+# Loop through the desired number of attributes
+for (i in 1:24) {
+  #NOTE: 1 mo before fire = month in which fire occurred
+  # Create the attribute name using paste0
+  attr_name <- paste0("N", i, "before")
+  # Add the attribute name to the list
+  attr_list[i] <- attr_name
+  precip_list[i] <- paste0("P", i, "before")
+  temp_list[i] <- paste0("T", i, "before")
+}
+
+# Print the attribute names list
+print(attr_list)
+
+attr_list =unlist(attr_list)
+precip_list = unlist(precip_list)
+temp_list = unlist(temp_list)
+#iterate through rows and then cols
+for (r in 1:3){#nrow(my_df)){
+  
+  #get fire date
+  this_fire_date = my_df$fire_date[r]
+  fire_month <- as.numeric(format(this_fire_date, "%m"))
+  fire_mo_name <- month_names[fire_month]
+  fire_year <- format(this_fire_date, "%Y")
+  
+  #get index of column that represents month of fire 
+  match_idx <- grep(paste('N',fire_mo_name, fire_year,sep=''), colnames(my_df))
+  print(paste('N',fire_mo_name, fire_year, sep=''))
+
+  print(c("match index:",match_idx))
+  
+  # mapply(function(attr_name, col_idx) {
+  #   print(attr_name)
+  #   print(col_idx)
+  #   my_df[r, attr_name] <- my_df[r,col_idx]
+  # }, attr_list, seq(match_idx, match_idx - 24*3, by = -3))
+  # 
+  # mapply(function(temp_list, col_idx) {
+  #   my_df[r, attr_name] <- my_df[r,col_idx]
+  # }, attr_list, seq(match_idx, match_idx - 24*3, by = -3))
+  # 
+  # mapply(function(precip_list, col_idx) {
+  #   my_df[r, attr_name] <- my_df[r,col_idx]
+  # }, attr_list, seq(match_idx, match_idx - 24*3, by = -3))
+
+
+
+
+
+  #get NDVI 24 months before the fire 
+  # for (attr_name in attr_list){
+  col_indices <- seq(match_idx, match_idx - 24*3, by = -3)[1:24]
+  for (i in seq_along(col_indices)){
+    attr_name = attr_list[i]
+    col_idx = col_indices[i]
+    my_df[r, attr_name] <- my_df[r,col_idx]
+  }
+  
+  match_idx = match_idx-1
+  #get temp 24 months before fire
+  
+  for (i in seq_along(col_indices)){
+    attr_name = temp_list[i]
+    col_idx = col_indices[i]
+    my_df[r, attr_name] <- my_df[r,col_idx]
+  }
+  
+ 
+  match_idx = match_idx-1
+  for (i in seq_along(col_indices)){
+    attr_name = precip_list[i]
+    col_idx = col_indices[i]
+    my_df[r, attr_name] <- my_df[r,col_idx]
+  }
+  
+  
+}
+after_fire_date_cols_keep = c() 
 after_fire_date_cols <- selected_names[sapply(selected_names, function(col_name) {  
   col_year <- as.numeric(substr(col_name, 5,9))
   col_month <- substr(col_name,2,4)
@@ -94,6 +179,7 @@ after_fire_date_cols <- selected_names[sapply(selected_names, function(col_name)
   col_date <- as.Date(paste(col_year, month_num, 20, sep = "-"))
   if(col_date > my_df$fire_date){
     # print(c(col_date,my_df$fire_date))
+    after_fire_date_cols_keep = c(after_fire_date_cols_keep,col_date)
     return (col_name)
 
   }else{
