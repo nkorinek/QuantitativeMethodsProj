@@ -78,7 +78,7 @@ fire_data$fire_date <- as.Date(paste(fire_data$Year, fire_data$Month, fire_data$
 # })]
 my_df <- fire_data %>% st_drop_geometry()
 
-selected_names <- names(my_df)[8:799] #all names with var-month-year
+# selected_names <- names(my_df)[8:799] #all names with var-month-year
 # Vector of month names
 month_names <- c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 
@@ -181,45 +181,25 @@ for (r in 1:nrow(my_df)){
   }
   
 }
-# after_fire_date_cols_keep = c() 
-# after_fire_date_cols <- selected_names[sapply(selected_names, function(col_name) {  
-#   col_year <- as.numeric(substr(col_name, 5,9))
-#   col_month <- substr(col_name,2,4)
-#   
-#   # Get the index of the month abbreviation in the month_names vector
-#   month_index <- match(col_month, month_names)
-#   
-#   # Convert the index to a numeric value
-#   month_num <- as.numeric(formatC(month_index, width = 2, format = "d", flag = "0"))
-# 
-#   col_date <- as.Date(paste(col_year, month_num, 20, sep = "-"))
-#   if(col_date > my_df$fire_date){
-#     # print(c(col_date,my_df$fire_date))
-#     after_fire_date_cols_keep = c(after_fire_date_cols_keep,col_date)
-#     return (col_name)
-# 
-#   }else{
-#     FALSE
-#   }
-  # if (col_date > my_df$fire_date){
-  #   return (col_name)
-  # }
-  
-  # if (substr(col_name, 1, 1) == "Y") {
-  #   col_year <- as.numeric(substr(col_name, 2))
-  #   col_month <- as.numeric(substr(my_df[paste0("M", col_year)], 2))
-  #   col_day <- as.numeric(substr(my_df[paste0("D", col_year)], 2))
-  #   col_date <- as.Date(paste(col_year, col_month, col_day, sep = "-"))
-  #   col_date > my_df$fire_date
-  # } else {
-  #   FALSE
-  # }
-# })]
-# selected_names
+
+#split into train/test sets (val is part of train right now)
+train_Xy <- my_df %>% dplyr::filter(my_df$isTest != 'Test') #currently this keeps validation rows in training set
+# train_y <- my_df %>% dplyr::filter(my_df$isTest != 'Test')
+test_Xy <- my_df %>% dplyr::filter(my_df$isTest == 'Test')
+# test_y <- my_df %>% dplyr::filter(my_df$isTest == 'Test')
+
 
 # Create input and output data frames
-# input_df <- my_df[, c("fire_date", after_fire_date_cols)]
-# output_df <- my_df[, !(names(my_df) %in% c("fire_date", after_fire_date_cols))]
+static_list <- c('slope','chili','elevation','aspect','mtpi')#colnames(my_df)[1:6]
+predictor_cols <- c(attr_list,precip_list, temp_list, static_list) #X (predictor) column names
+target_cols <- c(precip_list_post, temp_list_post, ndvi_list_post) #y (target) col names
+
+train_Xy <- train_Xy[c(predictor_cols,target_cols)]
+test_Xy <- test_Xy[c(predictor_cols,target_cols)]
+# train_y <- test_y[target_cols]
+# test_y <- test_y[target_cols]
+
+
 ```
 
 Random Forests Analysis
@@ -236,7 +216,7 @@ library(tidyr)
 library(sf)
 library(caret)
 library(doParallel)
-install.pacakges("rlang")#needed to fix a caret dependency/version issue
+# install.pacakges("rlang")#needed to fix a caret dependency/version issue
 library(caret)
 
 # if installing caret doesnt work try:
@@ -244,24 +224,26 @@ library(caret)
 # devtools::install_url("https://cran.r-project.org/src/contrib/caret_6.0-78.tar.gz")
 
 #subset out columns from dataset (remove non-predictors/targets)
-names <- names(fire_data)
-to_remove <- c("Event_ID", "geometry", "index_righ")
-keep_names <- names[! names %in% to_remove]
-keep_names
-fire_data_4_model <- fire_data[keep_names]
-fire_data_4_model <- fire_data_4_model %>% st_drop_geometry()
+# names <- names(fire_data)
+# to_remove <- c("Event_ID", "geometry", "index_righ")
+# keep_names <- names[! names %in% to_remove]
+# keep_names
+# fire_data_4_model <- fire_data[keep_names]
+# fire_data_4_model <- fire_data_4_model %>% st_drop_geometry()
 
 #check for complete cases (will remove everything bc some columns are blank...)
 # fire_data_4_model <- fire_data_4_model[complete.cases(fire_data_4_model), ]
 
 #drop row where column 'elevation' is NA
-fire_data_4_model<- fire_data_4_model %>% tidyr::drop_na(elevation)
+train_Xy<- train_Xy %>% tidyr::drop_na(elevation)
+test_Xy<- test_Xy %>% tidyr::drop_na(elevation)
 
 #drop any column where there is an NA value
-fire_data_4_model<-fire_data_4_model[ , apply(fire_data_4_model, 2, function(x) !any(is.na(x)))]
+# train_X<-train_X[ , apply(train_X, 2, function(x) !any(is.na(x)))]
 
 #TEMPORARY until we do interpolation to fill missing values
-fire_data_4_model[is.na(fire_data_4_model)] <- 0
+train_Xy[is.na(train_Xy)] <- 0
+test_Xy[is.na(test_Xy)] <- 0
 
 
 #Run Recursive Feature Elimination
@@ -321,9 +303,38 @@ preeceeding the fire
 tells the model which timestep after the fire the model is supposed to predict
 
 ```{r, echo=T, eval=T, results='hide'}
+#Run Option 1:
+for (i in 1:24){
+  #create training set with t timesteps pre-prediction
+  #e.g. first want to predict NDVI for month after fire, using 24-months pre-fire 
+  
+  #get list of attributes to keep as predictors:
+  end <- length(attr_list)
+  keep_attr_pre <- c(attr_list[i:end], precip_list[i:end], temp_list[i:end])
+  len <- length(attr_list) - length(attr_list[i:end]) 
+  #^ how many timesteps do we need in order to ensure that we have 24 pre-prediction inputs?
+  if (len>0){
+    keep_attr_post <- c(ndvi_list_post[1:len], precip_list_post[1:len], temp_list_post[1:len])
+  }else{
+    keep_attr_post = c()
+  }
+  
+  keep_X <- c(keep_attr_pre, keep_attr_post)
+  
+  #get attribute to kee as target
+  keep_y <- ndvi_list_post[i]
+  print(c("target:", keep_y))
+  
+  #split data into input and target/output
+  current_X <- train_Xy[keep_X]
+  current_y <- train_Xy[keep_y]
+  
+  #run RF!!
+  
+  
+}
 
 
-# points_df<- as.data.frame(fire_data)
 
 
 model.rf <- randomforest()
