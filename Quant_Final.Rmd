@@ -86,6 +86,9 @@ month_names <- c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", 
 attr_list <- list()
 precip_list <- list()
 temp_list <- list()
+precip_list_post <- list()
+temp_list_post <- list()
+ndvi_list_post <- list()
 
 # Loop through the desired number of attributes
 for (i in 1:24) {
@@ -96,6 +99,12 @@ for (i in 1:24) {
   attr_list[i] <- attr_name
   precip_list[i] <- paste0("P", i, "before")
   temp_list[i] <- paste0("T", i, "before")
+  
+  #columns for after fire 
+  precip_list_post[i] <- paste0("P", i, "after")
+  temp_list_post[i] <- paste0("T", i, "after")
+  ndvi_list_post[i] <- paste0("T", i, "after")
+  
 }
 
 # Print the attribute names list
@@ -104,9 +113,14 @@ print(attr_list)
 attr_list =unlist(attr_list)
 precip_list = unlist(precip_list)
 temp_list = unlist(temp_list)
-#iterate through rows and then cols
-for (r in 1:3){#nrow(my_df)){
-  
+precip_list_post = unlist(precip_list_post)
+temp_list_post = unlist(temp_list_post)
+ndvi_list_post = unlist(ndvi_list_post)
+
+
+#iterate through rows and then cols to parse NDVI, preicp, temp for N months before/after fire
+for (r in 1:nrow(my_df)){
+
   #get fire date
   this_fire_date = my_df$fire_date[r]
   fire_month <- as.numeric(format(this_fire_date, "%m"))
@@ -115,76 +129,78 @@ for (r in 1:3){#nrow(my_df)){
   
   #get index of column that represents month of fire 
   match_idx <- grep(paste('N',fire_mo_name, fire_year,sep=''), colnames(my_df))
-  print(paste('N',fire_mo_name, fire_year, sep=''))
-
-  print(c("match index:",match_idx))
   
-  # mapply(function(attr_name, col_idx) {
-  #   print(attr_name)
-  #   print(col_idx)
-  #   my_df[r, attr_name] <- my_df[r,col_idx]
-  # }, attr_list, seq(match_idx, match_idx - 24*3, by = -3))
-  # 
-  # mapply(function(temp_list, col_idx) {
-  #   my_df[r, attr_name] <- my_df[r,col_idx]
-  # }, attr_list, seq(match_idx, match_idx - 24*3, by = -3))
-  # 
-  # mapply(function(precip_list, col_idx) {
-  #   my_df[r, attr_name] <- my_df[r,col_idx]
-  # }, attr_list, seq(match_idx, match_idx - 24*3, by = -3))
-
-
-
-
-
   #get NDVI 24 months before the fire 
-  # for (attr_name in attr_list){
   col_indices <- seq(match_idx, match_idx - 24*3, by = -3)[1:24]
   for (i in seq_along(col_indices)){
     attr_name = attr_list[i]
+    col_idx = col_indices[i]
+    # print(c(colnames(my_df)[col_idx],attr_name))
+    my_df[r, attr_name] <- my_df[r,col_idx]
+  }
+  
+  #get NDVI 24 months AFTER the fire
+  col_indices <- seq(match_idx+3, match_idx + 24*3, by = 3)#[1:24]
+  for (i in seq_along(col_indices)){
+    attr_name = ndvi_list_post[i]
     col_idx = col_indices[i]
     my_df[r, attr_name] <- my_df[r,col_idx]
   }
   
   match_idx = match_idx-1
+  col_indices <- seq(match_idx, match_idx - 24*3, by = -3)[1:24]
   #get temp 24 months before fire
-  
   for (i in seq_along(col_indices)){
     attr_name = temp_list[i]
     col_idx = col_indices[i]
     my_df[r, attr_name] <- my_df[r,col_idx]
   }
+  #get temp 24 months AFTER the fire
+  col_indices <- seq(match_idx+3, match_idx + 24*3, by = 3)
+  for (i in seq_along(col_indices)){
+    attr_name = temp_list_post[i]
+    col_idx = col_indices[i]
+    my_df[r, attr_name] <- my_df[r,col_idx]
+  }
   
- 
+  #get precip 24 months before the fire
   match_idx = match_idx-1
+  col_indices <- seq(match_idx, match_idx - 24*3, by = -3)[1:24]
   for (i in seq_along(col_indices)){
     attr_name = precip_list[i]
     col_idx = col_indices[i]
     my_df[r, attr_name] <- my_df[r,col_idx]
   }
   
+  #get precip 24 months AFTER the fire 
+  col_indices <- seq(match_idx+3, match_idx + 24*3, by = 3)
+  for (i in seq_along(col_indices)){
+    attr_name = precip_list_post[i]
+    col_idx = col_indices[i]
+    my_df[r, attr_name] <- my_df[r,col_idx]
+  }
   
 }
-after_fire_date_cols_keep = c() 
-after_fire_date_cols <- selected_names[sapply(selected_names, function(col_name) {  
-  col_year <- as.numeric(substr(col_name, 5,9))
-  col_month <- substr(col_name,2,4)
-  
-  # Get the index of the month abbreviation in the month_names vector
-  month_index <- match(col_month, month_names)
-  
-  # Convert the index to a numeric value
-  month_num <- as.numeric(formatC(month_index, width = 2, format = "d", flag = "0"))
-
-  col_date <- as.Date(paste(col_year, month_num, 20, sep = "-"))
-  if(col_date > my_df$fire_date){
-    # print(c(col_date,my_df$fire_date))
-    after_fire_date_cols_keep = c(after_fire_date_cols_keep,col_date)
-    return (col_name)
-
-  }else{
-    FALSE
-  }
+# after_fire_date_cols_keep = c() 
+# after_fire_date_cols <- selected_names[sapply(selected_names, function(col_name) {  
+#   col_year <- as.numeric(substr(col_name, 5,9))
+#   col_month <- substr(col_name,2,4)
+#   
+#   # Get the index of the month abbreviation in the month_names vector
+#   month_index <- match(col_month, month_names)
+#   
+#   # Convert the index to a numeric value
+#   month_num <- as.numeric(formatC(month_index, width = 2, format = "d", flag = "0"))
+# 
+#   col_date <- as.Date(paste(col_year, month_num, 20, sep = "-"))
+#   if(col_date > my_df$fire_date){
+#     # print(c(col_date,my_df$fire_date))
+#     after_fire_date_cols_keep = c(after_fire_date_cols_keep,col_date)
+#     return (col_name)
+# 
+#   }else{
+#     FALSE
+#   }
   # if (col_date > my_df$fire_date){
   #   return (col_name)
   # }
@@ -198,12 +214,12 @@ after_fire_date_cols <- selected_names[sapply(selected_names, function(col_name)
   # } else {
   #   FALSE
   # }
-})]
+# })]
 # selected_names
 
 # Create input and output data frames
-input_df <- my_df[, c("fire_date", after_fire_date_cols)]
-output_df <- my_df[, !(names(my_df) %in% c("fire_date", after_fire_date_cols))]
+# input_df <- my_df[, c("fire_date", after_fire_date_cols)]
+# output_df <- my_df[, !(names(my_df) %in% c("fire_date", after_fire_date_cols))]
 ```
 
 Random Forests Analysis
