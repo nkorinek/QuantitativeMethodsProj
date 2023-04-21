@@ -89,6 +89,7 @@ temp_list <- list()
 
 # Loop through the desired number of attributes
 for (i in 1:24) {
+  #NOTE: 1 mo before fire = month in which fire occurred
   # Create the attribute name using paste0
   attr_name <- paste0("N", i, "before")
   # Add the attribute name to the list
@@ -100,6 +101,9 @@ for (i in 1:24) {
 # Print the attribute names list
 print(attr_list)
 
+attr_list =unlist(attr_list)
+precip_list = unlist(precip_list)
+temp_list = unlist(temp_list)
 #iterate through rows and then cols
 for (r in 1:3){#nrow(my_df)){
   
@@ -114,29 +118,52 @@ for (r in 1:3){#nrow(my_df)){
   print(paste('N',fire_mo_name, fire_year, sep=''))
 
   print(c("match index:",match_idx))
+  
+  # mapply(function(attr_name, col_idx) {
+  #   print(attr_name)
+  #   print(col_idx)
+  #   my_df[r, attr_name] <- my_df[r,col_idx]
+  # }, attr_list, seq(match_idx, match_idx - 24*3, by = -3))
+  # 
+  # mapply(function(temp_list, col_idx) {
+  #   my_df[r, attr_name] <- my_df[r,col_idx]
+  # }, attr_list, seq(match_idx, match_idx - 24*3, by = -3))
+  # 
+  # mapply(function(precip_list, col_idx) {
+  #   my_df[r, attr_name] <- my_df[r,col_idx]
+  # }, attr_list, seq(match_idx, match_idx - 24*3, by = -3))
+
+
+
+
 
   #get NDVI 24 months before the fire 
-  for (attr_name in attr_list){
-    for (col_idx in seq(match_idx, match_idx - 24*3, by = -3)){
-      my_df[r, attr_name] <- my_df[r,col_idx]
-    }
-  }
-  match_idx = match_idx-1
-  #get temp 24 months before fire
-  for (attr_name in temp_list){
-    for (col_idx in seq(match_idx, match_idx - 24*3, by = -3)){
-      my_df[r, attr_name] <- my_df[r,col_idx]
-    }
-  }
-  match_idx = match_idx-1
-  #get precip 24 months before fire
-  for (attr_name in precip_list){
-    for (col_idx in seq(match_idx, match_idx - 24*3, by = -3)){
-      my_df[r, attr_name] <- my_df[r,col_idx]
-    }
+  # for (attr_name in attr_list){
+  col_indices <- seq(match_idx, match_idx - 24*3, by = -3)[1:24]
+  for (i in seq_along(col_indices)){
+    attr_name = attr_list[i]
+    col_idx = col_indices[i]
+    my_df[r, attr_name] <- my_df[r,col_idx]
   }
   
-  #
+  match_idx = match_idx-1
+  #get temp 24 months before fire
+  
+  for (i in seq_along(col_indices)){
+    attr_name = temp_list[i]
+    col_idx = col_indices[i]
+    my_df[r, attr_name] <- my_df[r,col_idx]
+  }
+  
+ 
+  match_idx = match_idx-1
+  for (i in seq_along(col_indices)){
+    attr_name = precip_list[i]
+    col_idx = col_indices[i]
+    my_df[r, attr_name] <- my_df[r,col_idx]
+  }
+  
+  
 }
 after_fire_date_cols_keep = c() 
 after_fire_date_cols <- selected_names[sapply(selected_names, function(col_name) {  
