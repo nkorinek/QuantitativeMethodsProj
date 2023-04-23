@@ -193,11 +193,12 @@ test_Xy <- my_df %>% dplyr::filter(my_df$isTest == 'Test')
 static_list <- c('slope','chili','elevation','aspect','mtpi')#colnames(my_df)[1:6]
 predictor_cols <- c(attr_list,precip_list, temp_list, static_list) #X (predictor) column names
 target_cols <- c(precip_list_post, temp_list_post, ndvi_list_post) #y (target) col names
-
-train_Xy <- train_Xy[c(predictor_cols,target_cols)]
-test_Xy <- test_Xy[c(predictor_cols,target_cols)]
+# all_cols <- c(target_cols,predictor_cols)
+# train_Xy <- train_Xy[all_cols]
+# test_Xy <- test_Xy[c(predictor_cols,target_cols)]
 # train_y <- test_y[target_cols]
 # test_y <- test_y[target_cols]
+colnames(train_Xy)
 
 
 ```
@@ -304,7 +305,8 @@ tells the model which timestep after the fire the model is supposed to predict
 
 ```{r, echo=T, eval=T, results='hide'}
 #Run Option 1:
-for (i in 1:24){
+for (i in 1:1){
+  print(i)
   #create training set with t timesteps pre-prediction
   #e.g. first want to predict NDVI for month after fire, using 24-months pre-fire 
   
@@ -318,24 +320,111 @@ for (i in 1:24){
   }else{
     keep_attr_post = c()
   }
-  
-  keep_X <- c(keep_attr_pre, keep_attr_post)
-  
-  #get attribute to kee as target
+   #get attribute to kee as target
   keep_y <- ndvi_list_post[i]
   print(c("target:", keep_y))
   
+  keep <- c(keep_attr_pre, keep_attr_post, static_list,keep_y)
+  
+ 
+  
   #split data into input and target/output
-  current_X <- train_Xy[keep_X]
-  current_y <- train_Xy[keep_y]
+  current <- train_Xy[keep]
+  current_test <- test_Xy[keep]
+  #current_y <- train_Xy[keep_y]
   
   #run RF!!
+  # model.rf <- randomforest()
+  #############################
   
+  #subsets max number should be the same or equal to the number of covariates being used
+  # determine number of covariates
+  subsets <- length(keep)
+
+  # set seeds to get reproducable results when running the process in parallel
+  set.seed(12)
+  seeds <- vector(mode = "list", length=76)
+  for(i in 1:75) seeds[[i]] <- sample.int(1000, length(1:subsets) + 1)
+  seeds[[76]] <- sample.int(1000, 1)
+
+  
+  # set up the train control
+  fitControl <- trainControl(method = "none",#repeatedcv", 
+                             # number = 5,#15
+                             # repeats = 1, #change to 3+
+                             # p = 0.7, #30% used for test set, 70% used for training set
+                             # selectionFunction = 'best', 
+                             classProbs = T,
+                             savePredictions = T, 
+                             # returnResamp = 'final',
+                             search = "random",
+                             verboseIter = TRUE,
+                             seeds = seeds)
+
+  # 5.1  Random Forest - Parallel process, highlight and run from c1 to stopCluster(c1)
+  c1 <- makeCluster(detectCores()-1)
+  registerDoParallel(c1)
+  set.seed(48)
+  #NOTE: need to edit T1after
+  rfFit = caret::train(T1after ~ ., data = current,
+                method="rf", 
+                trControl = fitControl, 
+                ntree = 500, #number of trees default is 500, which seems to work best anyway. 
+                # tuneLength=10, 
+                metric = 'RMSE', 
+                na.action=na.pass,
+                keep.forest=TRUE, # added this line and the next for partial dependence plots
+                importance=TRUE)
+  
+  stopCluster(c1)
+  
+  gc()
+  
+  # Inspect rfFit
+  rfFit$finalModel
+  
+  #look at overall accuracy, kappa, and SD associated with each mtry value
+  print(rfFit)
+  rfFit$results
+  
+  #look at accuracy associated with each CV fold
+  str(rfFit)
+  rfFit$resample
+  
+  
+  # Convert caret wrapper into randomforest model object for raster prediction
+  rf.model <- rfFit$finalModel
+  rf.pred <- predict(rf_model$finalModel, newdata=current_test)
+  
+  
+  varImpPlot(rf.model)
+  
+  
+  ##---------------------- different RF function ---------------------
+  # Fit the random forest model
+  rf_model <- randomForest(T1after ~ ., data = current, importance = TRUE, ntree=500,mtry=50,type='regression')
+  
+  
+  # Make predictions on the test set
+  rf_pred <- predict(rf_model, newdata = current_test)
+  
+  # Check the accuracy of the model
+  # table(rf_pred, current_test$T1after)
+  varImpPlot(rf_model)
+
+  test_rmse <- sqrt(mean((current_test$T1after - rf_pred)^2))
+  print(c("RMSE on test set:", test_rmse))
+  
+  #r2
+  test_r2 <- 1 - sum((current_test$T1after - rf_pred)^2) / sum((current_test$T1after - mean(current_test$T1after))^2)
+  print(c("test R2:",test_r2))
+  
+  plot(current_test$T1after,rf_pred, xlim=c(40,160), ylim=c(40,160),asp=1)
+
   
 }
 
 
 
 
-model.rf <- randomforest()
 ```
