@@ -306,6 +306,7 @@ tells the model which timestep after the fire the model is supposed to predict
 ```{r, echo=T, eval=T, results='hide'}
 #Run Option 1:
 for (i in 1:1){
+  print(i)
   #create training set with t timesteps pre-prediction
   #e.g. first want to predict NDVI for month after fire, using 24-months pre-fire 
   
@@ -329,6 +330,7 @@ for (i in 1:1){
   
   #split data into input and target/output
   current <- train_Xy[keep]
+  current_test <- test_Xy[keep]
   #current_y <- train_Xy[keep_y]
   
   #run RF!!
@@ -347,15 +349,16 @@ for (i in 1:1){
 
   
   # set up the train control
-  fitControl <- trainControl(method = "repeatedcv", 
-                             number = 15,
-                             repeats = 5,
-                             p = 0.7, #30% used for test set, 70% used for training set
-                             selectionFunction = 'best', 
+  fitControl <- trainControl(method = "none",#repeatedcv", 
+                             # number = 5,#15
+                             # repeats = 1, #change to 3+
+                             # p = 0.7, #30% used for test set, 70% used for training set
+                             # selectionFunction = 'best', 
                              classProbs = T,
                              savePredictions = T, 
-                             returnResamp = 'final',
+                             # returnResamp = 'final',
                              search = "random",
+                             verboseIter = TRUE,
                              seeds = seeds)
 
   # 5.1  Random Forest - Parallel process, highlight and run from c1 to stopCluster(c1)
@@ -363,15 +366,16 @@ for (i in 1:1){
   registerDoParallel(c1)
   set.seed(48)
   #NOTE: need to edit T1after
-  rfFit = train(T1after ~ ., data = current,
-                "rf", 
+  rfFit = caret::train(T1after ~ ., data = current,
+                method="rf", 
                 trControl = fitControl, 
                 ntree = 500, #number of trees default is 500, which seems to work best anyway. 
-                tuneLength=10, 
-                metric = 'MSE', 
+                # tuneLength=10, 
+                metric = 'RMSE', 
                 na.action=na.pass,
-                keep.forest=TRUE, # added this line and the next for partial dependance plots
+                keep.forest=TRUE, # added this line and the next for partial dependence plots
                 importance=TRUE)
+  
   stopCluster(c1)
   
   gc()
@@ -390,14 +394,33 @@ for (i in 1:1){
   
   # Convert caret wrapper into randomforest model object for raster prediction
   rf.model <- rfFit$finalModel
+  rf.pred <- predict(rf_model$finalModel, newdata=current_test)
   
   
   varImpPlot(rf.model)
   
   
-  ##
+  ##---------------------- different RF function ---------------------
+  # Fit the random forest model
+  rf_model <- randomForest(T1after ~ ., data = current, importance = TRUE, ntree=500,mtry=50,type='regression')
   
   
+  # Make predictions on the test set
+  rf_pred <- predict(rf_model, newdata = current_test)
+  
+  # Check the accuracy of the model
+  # table(rf_pred, current_test$T1after)
+  varImpPlot(rf_model)
+
+  test_rmse <- sqrt(mean((current_test$T1after - rf_pred)^2))
+  print(c("RMSE on test set:", test_rmse))
+  
+  #r2
+  test_r2 <- 1 - sum((current_test$T1after - rf_pred)^2) / sum((current_test$T1after - mean(current_test$T1after))^2)
+  print(c("test R2:",test_r2))
+  
+  plot(current_test$T1after,rf_pred, xlim=c(40,160), ylim=c(40,160),asp=1)
+
   
 }
 
