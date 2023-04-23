@@ -25,6 +25,7 @@ library(spatstat)
 library(spdep)
 library(ggmap)
 library(ggsn)
+library(rsq)
 
 # Load shape file
 fire_data<-st_read("Quant_Fire_Data/Quant_Fire_Data.shp")
@@ -94,16 +95,15 @@ ndvi_list_post <- list()
 for (i in 1:24) {
   #NOTE: 1 mo before fire = month in which fire occurred
   # Create the attribute name using paste0
-  attr_name <- paste0("N", i, "before")
   # Add the attribute name to the list
-  attr_list[i] <- attr_name
+  attr_list[i] <- paste0("N", i, "before")
   precip_list[i] <- paste0("P", i, "before")
   temp_list[i] <- paste0("T", i, "before")
   
   #columns for after fire 
   precip_list_post[i] <- paste0("P", i, "after")
   temp_list_post[i] <- paste0("T", i, "after")
-  ndvi_list_post[i] <- paste0("T", i, "after")
+  ndvi_list_post[i] <- paste0("N", i, "after")
   
 }
 
@@ -197,6 +197,7 @@ df_scaled <- my_df %>%
   dplyr::mutate_if(is.numeric, scale) %>%
   cbind(my_df[dont_scale])#, my_df[dont_scale])
 
+my_df <-df_scaled
 ```
 
 Apply Seasonal Differencing to De-trend data/ control periodicity!
@@ -326,7 +327,7 @@ test_Xy <- my_df %>% dplyr::filter(my_df$isTest == 'Test')
 # Create input and output data frames
 static_list <- c('slope','chili','elevation','aspect','mtpi')#colnames(my_df)[1:6]
 predictor_cols <- c(attr_list,precip_list, temp_list, static_list) #X (predictor) column names
-target_cols <- c(precip_list_post, temp_list_post, ndvi_list_post) #y (target) col names
+target_cols <- c(ndvi_list_post, temp_list_post, ndvi_list_post) #y (target) col names
 # all_cols <- c(target_cols,predictor_cols)
 # train_Xy <- train_Xy[all_cols]
 # test_Xy <- test_Xy[c(predictor_cols,target_cols)]
@@ -438,11 +439,18 @@ tells the model which timestep after the fire the model is supposed to predict
 
 ```{r, echo=T, eval=T, results='hide'}
 #Run Option 1:
+#define R2 
+r_squared <- function(pred, target) {
+  ss_residual <- sum((target - pred) ^ 2)
+  ss_total <- sum((target - mean(target)) ^ 2)
+  return(1 - ss_residual / ss_total)
+}
+
 
 #store RMSE of test set in this dataframe:
 rmse_df <- data.frame()
 r2_df <- data.frame()
-for (i in 1:3){
+for (i in 1:24){
   print(i)
   #create training set with t timesteps pre-prediction
   #e.g. first want to predict NDVI for month after fire, using 24-months pre-fire 
@@ -455,7 +463,7 @@ for (i in 1:3){
   if (len>0){
     keep_attr_post <- c(ndvi_list_post[1:len], precip_list_post[1:len], temp_list_post[1:len])
   }else{
-    keep_attr_post = c()
+    keep_attr_post <- c()#ndvi_list_post[1:1])#, precip_list_post[1:1], temp_list_post[1:1])
   }
    #get attribute to kee as target
   target_col <- ndvi_list_post[i]
@@ -536,35 +544,44 @@ formula <- as.formula(paste(target_col, paste(names(current)[!names(current) %in
   
   # Fit the random forest model
   rf_model <- randomForest(formula=formula, data = current, importance = TRUE, ntree=500,mtry=50,type='regression')
-
+  
+  train_pred <- rf_model$predicted
+  print(c("training R2",r_squared(train_pred, current$N1after)))
   
   
   # Make predictions on the test set
   rf_pred <- predict(rf_model, newdata = current_test)
   
   # Check the accuracy of the model
-  # table(rf_pred, current_test$T1after)
-  varImpPlot(rf_model)
-
-  test_rmse <- sqrt(mean((current_test$T1after - rf_pred)^2))
-  print(c("RMSE on test set:", test_rmse))
-  # rmse_df[target_col] <- test_rmse 
-  rmse_df[1, target_col] <- test_rmse
 
   
-  #r2
-  test_r2 <- 1 - sum((current_test$T1after - rf_pred)^2) / sum((current_test$T1after - mean(current_test$T1after))^2)
+  #r2 on test set
+  actual <- current_test[[target_col]]
+  test_r2 <- r_squared(rf_pred, actual)
   print(c("test R2:",test_r2))
   r2_df[1, target_col] <- test_r2
+  
+  
+  # varImpPlot(rf_model)
+  
+  test_rmse <- sqrt(mean((actual - rf_pred)^2))
+  print(c("RMSE on test set:", test_rmse))
+  rmse_df[1, target_col] <- test_rmse
+
 
   
-  plot(current_test$T1after,rf_pred, xlim=c(40,160), ylim=c(40,160),asp=1)
+  # plot(current_test$T1after,rf_pred, xlim=c(40,160), ylim=c(40,160),asp=1)
   
   test_Xy[paste("pred_",target_col,sep='')] = rf_pred 
 
   
 }
+print(t(r2_df))
+print(rmse_df)
 
+#plot relationship between post-fire timesteps and accuracy metrics
+plot(t(r2_df)) #transposed
+plot(t(rmse_df))
 
 
 
