@@ -338,21 +338,13 @@ Here: ACTUALLY split data into training and test :)
 
 #split into train/test sets (val is part of train right now)
 train_Xy <- my_df %>% dplyr::filter(my_df$isTest != 'Test') #currently this keeps validation rows in training set
-# train_y <- my_df %>% dplyr::filter(my_df$isTest != 'Test')
 test_Xy <- my_df %>% dplyr::filter(my_df$isTest == 'Test')
-# test_y <- my_df %>% dplyr::filter(my_df$isTest == 'Test')
 
 
 # Create input and output data frames
 static_list <- c('slope','chili','elevation','aspect','mtpi')#colnames(my_df)[1:6]
 predictor_cols <- c(attr_list,precip_list, temp_list, static_list) #X (predictor) column names
 target_cols <- c(ndvi_list_post, temp_list_post, ndvi_list_post) #y (target) col names
-# all_cols <- c(target_cols,predictor_cols)
-# train_Xy <- train_Xy[all_cols]
-# test_Xy <- test_Xy[c(predictor_cols,target_cols)]
-# train_y <- test_y[target_cols]
-# test_y <- test_y[target_cols]
-
 
 ```
 
@@ -441,6 +433,19 @@ test_Xy[is.na(test_Xy)] <- 0
 
 ```
 
+SANITY CHECK
+```{r, echo=T, eval=T, results='hide'}
+
+temp <- my_df[2,] #select row (2)
+temp$fire_date
+temp$N1after==temp$NJul2012
+temp$N1before == temp$NJun2012
+
+compare <-fire_data[2,]
+compare$fire_date
+compare$NJun2012 #wont be the same bc my_df has been seasonally differenced + scaled
+
+```
 We now can run the Random Forests model.
 
 Options for RF strategies:
@@ -557,7 +562,7 @@ print(rmse_df)
 plot(t(r2_df), main= "R^2 by Timestep", xlab="Months After Fire", ylab="R^2") #transposed
 
 # Copy plot to a file
-png(file = "/Users/clairesimpson/Downloads/r2_by_month.png")
+png(file = "/Users/clairesimpson/Downloads/r2_by_month.png")#_seasonally_differenced
 dev.copy(png)
 dev.off()
 gc()
@@ -566,7 +571,7 @@ gc()
 plot(t(rmse_df), main="RMSE by Timestep", xlab="Months After Fire", ylab="RMSE")
 
 # Copy plot to a file
-png(file = "/Users/clairesimpson/Downloads/rmse_by_month.png")
+png(file = "/Users/clairesimpson/Downloads/rmse_by_month.png")#seasonally_differenced
 dev.copy(png)
 dev.off()
 gc()
@@ -596,7 +601,7 @@ points(x, pred, type='b',col = "red")
 legend("topright", legend = c("True", "Predicted"), col = c("blue", "red"), lty = 1)
 
 # Copy plot to a file
-png(file = "/Users/clairesimpson/Downloads/pred_and_true_ts_for_testsample.png")
+png(file = "/Users/clairesimpson/Downloads/pred_and_true_ts_for_testsample_seas_dif.png")
 dev.copy(png)
 dev.off()
 gc()
