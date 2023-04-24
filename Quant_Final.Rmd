@@ -531,6 +531,7 @@ formula <- as.formula(paste(target_col, paste(names(current)[!names(current) %in
 ```
 
 Visualize the results
+** want to add variable importance
 ```{r, echo=T, eval=T, results='hide'}
 
 print(t(r2_df))
@@ -538,7 +539,22 @@ print(rmse_df)
 
 #plot relationship between post-fire timesteps and accuracy metrics
 plot(t(r2_df), main= "R^2 by Timestep", xlab="Months After Fire", ylab="R^2") #transposed
+
+# Copy plot to a file
+png(file = "/Users/clairesimpson/Downloads/r2_by_month.png")
+dev.copy(png)
+dev.off()
+gc()
+
+
 plot(t(rmse_df), main="RMSE by Timestep", xlab="Months After Fire", ylab="RMSE")
+
+# Copy plot to a file
+png(file = "/Users/clairesimpson/Downloads/rmse_by_month.png")
+dev.copy(png)
+dev.off()
+gc()
+
 
 #want to plot an example sample 
 # Create some sample data
@@ -563,6 +579,11 @@ plot(x, truth,
 points(x, pred, type='b',col = "red")
 legend("topright", legend = c("True", "Predicted"), col = c("blue", "red"), lty = 1)
 
+# Copy plot to a file
+png(file = "/Users/clairesimpson/Downloads/pred_and_true_ts_for_testsample.png")
+dev.copy(png)
+dev.off()
+gc()
 
 
 ```
@@ -594,6 +615,12 @@ library(factoextra)
 # Create elbow plot
 elbow_plot <- fviz_nbclust(cluster_data, kmeans, method = "wss")
 print(elbow_plot)
+# Copy plot to a file
+png(file = "/Users/clairesimpson/Downloads/elbow_plot.png")
+dev.copy(png)
+dev.off()
+gc()
+
 
 
 
@@ -616,6 +643,9 @@ ggplot() +
   geom_point(aes(x = Longitude, y = Latitude, color = factor(kmeans)), data=non_na_cluster, size = 2) +
   scale_color_discrete(name = "Kmeans")
 
+# save the plot to my downloads folder as a PNG file
+filename <- file.path(Sys.getenv("HOME"), "Downloads", "kmeans_map.png")
+ggsave(filename, device = "png", width = 6, height = 6, dpi = 300)
 
 
 ```
