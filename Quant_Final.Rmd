@@ -25,7 +25,13 @@ library(spatstat)
 library(spdep)
 library(ggmap)
 library(ggsn)
-library(rsq)
+library(randomForest) 
+library(tidyr)
+library(sf)
+# library(caret)
+library(doParallel)
+# install.pacakges("rlang")#needed to fix a caret dependency/version issue
+library(caret)
 
 # Load shape file
 fire_data<-st_read("Quant_Fire_Data/Quant_Fire_Data.shp")
@@ -46,12 +52,6 @@ simple_fire_data<-st_set_crs(simple_fire_data, 4326)
 simple_projLocs<-st_transform(simple_fire_data, CRS("+init=epsg:26913"))
 ```
 
-
-
-Clustering Analysis
-```{r, echo=T, eval=T, results='hide'}
-#kmeans
-```
 
 Add Columns for Training vs. Test vs Validation data
 ```{r, echo=T, eval=T, results='hide'}
@@ -182,23 +182,7 @@ for (r in 1:nrow(my_df)){
   
 }
 ```
-  
-Normalize Data
-```{r, echo=T, eval=T, results='hide'}
 
-# Select columns to normalize
-my_df['id'] <- seq(1:nrow(my_df))
-dont_scale <- c("id","Event_ID", "Month","Day","Year","fire_date","isTest")
-cols_to_normalize <- dplyr::setdiff(names(my_df), dont_scale)
-
-# Normalize selected columns
-df_scaled <- my_df %>% 
-  dplyr::select(cols_to_normalize) %>% 
-  dplyr::mutate_if(is.numeric, scale) %>%
-  cbind(my_df[dont_scale])#, my_df[dont_scale])
-
-my_df <-df_scaled
-```
 
 Apply Seasonal Differencing to De-trend data/ control periodicity!
 ```{r, echo=T, eval=T, results='hide'}
@@ -302,7 +286,7 @@ other_cols <- setdiff(names(monthly_means),names(my_df))
 my_df[other_cols] <- monthly_means 
 
 
-final_df <- my_df
+# final_df <- my_df
 
 ### "^T[A-Za-z]{3}\\d{4}$"
 all_month_cols <- c(Ncols,Pcols,Tcols)
@@ -313,6 +297,25 @@ for (month_col in all_month_cols) { #iterate through all variable mean monthly c
 }
 
 ```
+
+  
+Normalize Data
+```{r, echo=T, eval=T, results='hide'}
+
+# Select columns to normalize
+my_df['id'] <- seq(1:nrow(my_df))
+dont_scale <- c("id","Event_ID", "Month","Day","Year","fire_date","isTest")
+cols_to_normalize <- dplyr::setdiff(names(my_df), dont_scale)
+
+# Normalize selected columns
+df_scaled <- my_df %>% 
+  dplyr::select(cols_to_normalize) %>% 
+  dplyr::mutate_if(is.numeric, scale) %>%
+  cbind(my_df[dont_scale])#, my_df[dont_scale])
+
+my_df <-df_scaled
+```
+
 
 Here: ACTUALLY split data into training and test :)
 ```{r, echo=T, eval=T, results='hide'}
@@ -340,19 +343,15 @@ target_cols <- c(ndvi_list_post, temp_list_post, ndvi_list_post) #y (target) col
 Random Forests Analysis
 
 We will fire run recursive feature elimination to get a sense of which predictor
-variables are the most important. We first need to prepare the data for input, 
-including transforming the data to remove the seasonal fluctuations (make it
-stationary): 
+variables are the most important. We have already prepared the data for input, 
+including transforming the data to remove the seasonal fluctuations (making it
+stationary),
+
+Here: remove NAs
 
 ```{r, echo=T, eval=T, results='hide'}
 #random forests
-library(randomForest) 
-library(tidyr)
-library(sf)
-library(caret)
-library(doParallel)
-# install.pacakges("rlang")#needed to fix a caret dependency/version issue
-library(caret)
+
 
 # if installing caret doesnt work try:
 # library(devtools)
@@ -384,45 +383,45 @@ test_Xy[is.na(test_Xy)] <- 0
 #Run Recursive Feature Elimination
 
 #RFE parameters
-subsets <- seq(20, 700, by=20)#c(1:(length(fire_data_4_model)-1))
-# seeds <- vector(mode = "list", length = 51)
-seeds <- vector(mode = "list", length = 35)
-for(i in 1:75) seeds[[i]] <- sample.int(1000, length(subsets) + 1)
-seeds[[76]] <- sample.int(1000, 1)
-
-ctrl.RFE <- caret::rfeControl(functions = rfFuncs,
-                       method = "repeatedcv",
-                       number = 15,
-                       repeats = 5,
-                       seeds = seeds, 
-                       verbose = FALSE)
-
-#this code makes it run in parallel
-c1 <- makeCluster(detectCores()-1)
-registerDoParallel(c1)
-set.seed(9)
-target <- c('NApr2021')
-rf.RFE <- rfe(x = fire_data_4_model[! fire_data_4_model %in% target],
-              y = fire_data_4_model$NApr2021,
-              sizes = subsets,
-              # na.rm=TRUE,
-              rfeControl = ctrl.RFE,
-              allowParallel = TRUE
-)
-stopCluster(c1)              
-
-gc()
-
-# Look at the results
-rf.RFE
-
-rf.RFE$fit
-
-rf.RFE$results
-
-plot(rf.RFE) # default plot is for Accuracy, but it can also be changed to Kappa
-plot(rf.RFE, metric="Kappa", main='RFE Kappa')
-plot(rf.RFE, metric="Accuracy", main='RFE Accuracy')
+# subsets <- seq(20, 700, by=20)#c(1:(length(fire_data_4_model)-1))
+# # seeds <- vector(mode = "list", length = 51)
+# seeds <- vector(mode = "list", length = 35)
+# for(i in 1:75) seeds[[i]] <- sample.int(1000, length(subsets) + 1)
+# seeds[[76]] <- sample.int(1000, 1)
+# 
+# ctrl.RFE <- caret::rfeControl(functions = rfFuncs,
+#                        method = "repeatedcv",
+#                        number = 15,
+#                        repeats = 5,
+#                        seeds = seeds, 
+#                        verbose = FALSE)
+# 
+# #this code makes it run in parallel
+# c1 <- makeCluster(detectCores()-1)
+# registerDoParallel(c1)
+# set.seed(9)
+# target <- c('NApr2021')
+# rf.RFE <- rfe(x = fire_data_4_model[! fire_data_4_model %in% target],
+#               y = fire_data_4_model$NApr2021,
+#               sizes = subsets,
+#               # na.rm=TRUE,
+#               rfeControl = ctrl.RFE,
+#               allowParallel = TRUE
+# )
+# stopCluster(c1)              
+# 
+# gc()
+# 
+# # Look at the results
+# rf.RFE
+# 
+# rf.RFE$fit
+# 
+# rf.RFE$results
+# 
+# plot(rf.RFE) # default plot is for Accuracy, but it can also be changed to Kappa
+# plot(rf.RFE, metric="Kappa", main='RFE Kappa')
+# plot(rf.RFE, metric="Accuracy", main='RFE Accuracy')
 
 ```
 
@@ -457,7 +456,9 @@ for (i in 1:24){
   
   #get list of attributes to keep as predictors:
   end <- length(attr_list)
-  keep_attr_pre <- c(attr_list[i:end], precip_list[i:end], temp_list[i:end])
+  #want include attributes from 1 mo before through 
+  range_i <- seq_len(25 - i)
+  keep_attr_pre <- c(attr_list[range_i], precip_list[range_i], temp_list[range_i])
   len <- length(attr_list) - length(attr_list[i:end]) 
   #^ how many timesteps do we need in order to ensure that we have 24 pre-prediction inputs?
   if (len>0){
@@ -465,20 +466,18 @@ for (i in 1:24){
   }else{
     keep_attr_post <- c()#ndvi_list_post[1:1])#, precip_list_post[1:1], temp_list_post[1:1])
   }
-   #get attribute to kee as target
+  
+  #get attribute to keep as target
   target_col <- ndvi_list_post[i]
   print(c("target:", target_col))
-  
+  #concat attribute lists to keep as predictors/targets
   keep <- c(keep_attr_pre, keep_attr_post, static_list,target_col)
   
-  #split data into input and target/output
+  #split data into train and test
   current <- train_Xy[keep]
   current_test <- test_Xy[keep]
-  #current_y <- train_Xy[keep_y]
-  
+
   #run RF!!
-  # model.rf <- randomforest()
-  #############################
   
   #subsets max number should be the same or equal to the number of covariates being used
   # determine number of covariates
@@ -490,61 +489,15 @@ for (i in 1:24){
   for(j in 1:75) seeds[[j]] <- sample.int(1000, length(1:subsets) + 1)
   seeds[[76]] <- sample.int(1000, 1)
   
-  # set up the train control
-  # fitControl <- trainControl(method = "none",#repeatedcv", 
-  #                            # number = 5,#15
-  #                            # repeats = 1, #change to 3+
-  #                            # p = 0.7, #30% used for test set, 70% used for training set
-  #                            # selectionFunction = 'best', 
-  #                            # classProbs = T,
-  #                            savePredictions = T, 
-  #                            # returnResamp = 'final',
-  #                            search = "random",
-  #                            verboseIter = TRUE,
-  #                            seeds = seeds)
-  # 
-  # # 5.1  Random Forest - Parallel process, highlight and run from c1 to stopCluster(c1)
-  # c1 <- makeCluster(detectCores()-1)
-  # registerDoParallel(c1)
-  # set.seed(48)
-  # #NOTE: need to edit T1after
-  # rfFit = caret::train(T1after ~ ., data = current,
-  #               method="rf", 
-  #               trControl = fitControl, 
-  #               ntree = 500, #number of trees default is 500, which seems to work best anyway. 
-  #               tuneLength=10,
-  #               metric = 'RMSE', 
-  #               na.action=na.pass,
-  #               keep.forest=TRUE, # added this line and the next for partial dependence plots
-  #               importance=TRUE)
-  # 
-  # stopCluster(c1)
-  # 
-  # gc()
-  # 
-  # # Inspect rfFit
-  # rfFit$finalModel
-  # 
-  # #look at overall accuracy, kappa, and SD associated with each mtry value
-  # print(rfFit)
-  # rfFit$results
   
-  
-  # Convert caret wrapper into randomforest model object for raster prediction
-  # rf.model <- rfFit$finalModel
-  # rf.pred <- predict(rf_model$finalModel, newdata=current_test)
-  
-  
-  # varImpPlot(rf.model)
-  
-  
-  ##---------------------- different RF function ---------------------
   # Create the formula for randomForest
 formula <- as.formula(paste(target_col, paste(names(current)[!names(current) %in% target_col], collapse = "+"), sep = "~"))
   
+  set.seed(12)
   # Fit the random forest model
   rf_model <- randomForest(formula=formula, data = current, importance = TRUE, ntree=500,mtry=50,type='regression')
   
+  #get training r2 to ensure model training correctly..
   train_pred <- rf_model$predicted
   print(c("training R2",r_squared(train_pred, current$N1after)))
   
@@ -567,21 +520,101 @@ formula <- as.formula(paste(target_col, paste(names(current)[!names(current) %in
   test_rmse <- sqrt(mean((actual - rf_pred)^2))
   print(c("RMSE on test set:", test_rmse))
   rmse_df[1, target_col] <- test_rmse
-
-
   
   # plot(current_test$T1after,rf_pred, xlim=c(40,160), ylim=c(40,160),asp=1)
   
+  #store predictions in dataframe to plot 
   test_Xy[paste("pred_",target_col,sep='')] = rf_pred 
 
   
 }
+```
+
+Visualize the results
+```{r, echo=T, eval=T, results='hide'}
+
 print(t(r2_df))
 print(rmse_df)
 
 #plot relationship between post-fire timesteps and accuracy metrics
-plot(t(r2_df)) #transposed
-plot(t(rmse_df))
+plot(t(r2_df), main= "R^2 by Timestep", xlab="Months After Fire", ylab="R^2") #transposed
+plot(t(rmse_df), main="RMSE by Timestep", xlab="Months After Fire", ylab="RMSE")
+
+#want to plot an example sample 
+# Create some sample data
+rand_num=10
+
+x <- 1:24
+truth_cols <- grep("^N\\d{1,2}after$", names(test_Xy),value=TRUE)
+truth <- t(test_Xy[rand_num,truth_cols])
+pred_cols <- grep("^pred_N\\d{1,2}after$", names(test_Xy),value=TRUE)
+pred_cols
+pred <- t(test_Xy[rand_num,pred_cols])
+
+
+plot(x, truth,
+     type="b",
+     col='blue',
+     main=paste0("Predicted and True NDVI for Test Sample ", as.character(rand_num)),
+     xlab = "Months After Fire",
+     ylab = "NDVI")
+
+# Add the second list to the plot
+points(x, pred, type='b',col = "red")
+legend("topright", legend = c("True", "Predicted"), col = c("blue", "red"), lty = 1)
+
+
+
+```
+
+
+Clustering Analysis:
+Run Kmeans to group the points and determine which points are most similar to one another 
+This will help reveal which fires are most similar 
+```{r, echo=T, eval=T, results='hide'}
+#kmeans
+
+set.seed(12)
+
+# output_df <- my_df[, !(names(my_df) %in% c("fire_date", after_fire_date_cols))]
+
+#use simple_fire_data
+#remove NAs - TEMPORARY?
+non_na_cluster<- simple_fire_data %>% tidyr::drop_na(elevation)
+non_na_cluster[is.na(non_na_cluster)] <- 0
+
+cluster_data <- non_na_cluster[, !names(non_na_cluster) %in% c("Event_ID", "geometry", "Year","Month","Day","severity")]
+cluster_data <-  cluster_data %>% st_drop_geometry()
+names(cluster_data)
+
+
+## Elbow Plot
+library(factoextra)
+
+# Create elbow plot
+elbow_plot <- fviz_nbclust(cluster_data, kmeans, method = "wss")
+print(elbow_plot)
+
+
+
+# Run kmeans with 3 clusters
+k <- kmeans(cluster_data, centers = 6)
+
+# View the cluster assignments
+# k$cluster
+
+#add clusters back to original dataframe
+non_na_cluster['kmeans'] <- k$cluster
+
+#plot clusters on map
+#add lat and long
+non_na_cluster$Longitude <- st_coordinates(non_na_cluster$geometry)[, 1]
+non_na_cluster$Latitude <- st_coordinates(non_na_cluster$geometry)[, 2]
+
+ggplot() +
+  geom_sf(data = non_na_cluster) +
+  geom_point(aes(x = Longitude, y = Latitude, color = factor(kmeans)), data=non_na_cluster, size = 2) +
+  scale_color_discrete(name = "Kmeans")
 
 
 
