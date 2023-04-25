@@ -608,6 +608,7 @@ points(x, pred, type='b',col = "red")
 legend("topright", legend = c("True", "Predicted"), col = c("blue", "red"), lty = 1)
 
 # Copy plot to a file
+
 dev.copy(png)
 dev.off()
 gc()
