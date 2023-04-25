@@ -28,10 +28,13 @@ library(ggsn)
 library(randomForest) 
 library(tidyr)
 library(sf)
+library(dplyr)
 # library(caret)
 library(doParallel)
 # install.pacakges("rlang")#needed to fix a caret dependency/version issue
 library(caret)
+library(gridExtra)
+library(GWmodel)
 
 # Load shape file
 fire_data<-st_read("Quant_Fire_Data/Quant_Fire_Data.shp")
@@ -92,7 +95,6 @@ fire_data$fire_date <- as.Date(paste(fire_data$Year, fire_data$Month, fire_data$
 # })]
 my_df <- fire_data %>% st_drop_geometry()
 ```
-
 
 Apply Seasonal Differencing to control periodicity!
 ```{r, echo=T, eval=T, results='hide'}
@@ -245,6 +247,61 @@ df_scaled <- my_df %>%
 my_df <-df_scaled
 ```
 
+# Temporal Interpolation
+```{r}
+interpolate_data <- df_scaled
+
+interpolate_data <- interpolate_data %>% 
+  select(starts_with("N")) %>%
+  select(!contains(c("before", "after")))
+
+interpolate_data_before <- interpolate_data
+```
+
+```{r}
+library(imputeTS)
+library(lubridate)
+
+
+interpolate_time_series <- function(ts_df) {
+  # Convert date columns to Date class
+  date_cols <- colnames(ts_df)
+  date_cols <- as.Date(paste0("01", substr(date_cols, 2, nchar(date_cols))), format = "%d%b%Y")
+
+  # Transpose data frame
+  transposed_df <- as.data.frame(t(as.matrix(ts_df)))
+  
+  # Convert data frame to time series object
+  ts_data <- ts(transposed_df, start = c(year(date_cols[1]), month(date_cols[1])), frequency = 12)
+  # Interpolate missing values
+  ts_data_interp <- na_interpolation(ts_data, option = "spline")
+
+  # Convert interpolated time series back to data frame
+  df_interp <- as.data.frame(t(ts_data_interp))
+  colnames(df_interp) <- colnames(ts_df)
+  
+  return(df_interp)
+}
+
+interpolated_ndvi <- interpolate_time_series(interpolate_data)
+```
+
+```{r}
+ndvi_ts_plot <- replace(interpolate_data_before, is.na(interpolate_data_before), 0)
+row1_df1 <- as.data.frame(t(as.matrix(ndvi_ts_plot[1, ])))
+row1_df2 <- as.data.frame(t(as.matrix(interpolated_ndvi[1, ])))
+
+# Convert data frame to time series object
+ts_data1 <- ts(row1_df1, start = c(2000, 1), frequency = 12)
+ts_data2 <- ts(row1_df2, start = c(2000, 1), frequency = 12)
+par(mfrow = c(1, 2)) # Set the plot layout to 1 row and 2 columns
+plot(ts_data1, col = "blue", main = "Time Series Where NA is Set to 0")
+plot(ts_data2, col = "purple", main = "Time Series Where NA is Interpolated")
+```
+```{r}
+recalc_cols <- colnames(interpolated_ndvi)
+my_df[, recalc_cols] <- interpolated_ndvi[, recalc_cols]
+```
 Get attributes before and after fire to Split data into pre fire and post fire data
 ```{r, echo=T, eval=T, results='hide'}
 
@@ -579,7 +636,7 @@ print(t(r2_df))
 print(rmse_df)
 
 # par(mar = c(4, 4, 2, 2)) # set margins to be 4 lines on bottom, left, and right, and 2 lines on top
-png(file = "/Users/clairesimpson/Downloads/r2_by_month_seasonally_differenced.png",res = 300,width = 1600, height = 1200)#_seasonally_differenced #width = 1200, height = 800, 
+# png(file = "/Users/clairesimpson/Downloads/r2_by_month_seasonally_differenced.png",res = 300,width = 1600, height = 1200)#_seasonally_differenced #width = 1200, height = 800, 
 
 #plot relationship between post-fire timesteps and accuracy metrics
 plot(t(r2_df), main= "R^2 by Timestep", xlab="Months After Fire", ylab="R^2") #transposed
@@ -589,7 +646,7 @@ dev.copy(png)
 dev.off()
 gc()
 
-png(file = "/Users/clairesimpson/Downloads/rmse_by_month_seasonally_differenced.png",res = 300,width = 1600, height = 1200)#seasonally_differenced
+# png(file = "/Users/clairesimpson/Downloads/rmse_by_month_seasonally_differenced.png",res = 300,width = 1600, height = 1200)#seasonally_differenced
 plot(t(rmse_df), main="RMSE by Timestep", xlab="Months After Fire", ylab="RMSE")
 
 # Copy plot to a file
@@ -609,7 +666,7 @@ pred_cols <- grep("^pred_N\\d{1,2}after$", names(test_Xy),value=TRUE)
 pred_cols
 pred <- t(test_Xy[rand_num,pred_cols])
 
-png(file = "/Users/clairesimpson/Downloads/pred_and_true_ts_for_testsample_seas_dif.png",res=300,width = 1600, height = 1200)
+# png(file = "/Users/clairesimpson/Downloads/pred_and_true_ts_for_testsample_seas_dif.png",res=300,width = 1600, height = 1200)
 
 plot(x, truth,
      type="b",
@@ -697,6 +754,8 @@ Means comparison between test/train/validation fires
 First getting checking the normality of each variable in each group of the fires
 
 ```{r}
+
+
 # Get the columns we are interested in testing
 columns <- colnames(simple_fire_data)
 variables <- c(columns[1:9], columns[11:12])
@@ -868,10 +927,13 @@ for (i in 1:26){
     best_combo_ix <- i
   }
 }
+orig_train_val_p <- get_wilcox_list_median_val(train_val_dict)
+orig_train_test_p <- get_wilcox_list_median_val(train_test_dict)
 cat(paste0("The sampling of fires with the lowest difference in variables was combination ", best_combo_ix))
 cat(paste0("\nThis combination of fires had ", best_combo, " variables that were significantly different between the training/validation and the training/testing combinations.\n"))
 cat(paste0(best_val, " of these variables were from the validation fires, and ", best_test, " of these were from the testing fires.\n"))
-cat(paste0("The median P-Value for the validation fire comparison was ", best_val_med, ", while it was ", best_test_med, " for the testing fires."))
+cat(paste0("The median P-Value for the validation fire comparison was ", best_val_med, ", while it was ", best_test_med, " for the testing fires.\n"))
+cat(paste0("The original median P-Value for the validation fire comparison was ", orig_train_val_p, ", while it was ", orig_train_test_p, " for the testing fires."))
 ```
 
 ```{r}
@@ -886,9 +948,13 @@ fire_boundaries['isTest2'] <- factor(fire_boundaries$isTest2)
 ```{r}
 fire_boundaries_center <- st_centroid(fire_boundaries)
 plot1 <- ggplot() + 
-  geom_sf(data=fire_boundaries_center, aes(color=isTest))
+  geom_sf(data=fire_boundaries_center, aes(color=isTest)) + 
+  ggtitle("Original Distribution of Training, Testing\nand Validation Fires") +
+  theme(plot.title = element_text(hjust = 0.5))
 plot2 <- ggplot() + 
-  geom_sf(data=fire_boundaries_center, aes(color=isTest2))
+  geom_sf(data=fire_boundaries_center, aes(color=isTest2)) + 
+  ggtitle("Updated Distribution of Training, Testing\nand Validation Fires") +
+  theme(plot.title = element_text(hjust = 0.5))
 grid.arrange(plot1, plot2, ncol = 2)
 ```
 
@@ -1002,10 +1068,13 @@ st_crs(simple_fire_data.sf) <- st_crs(fire_boundaries_reproj)
 
 # Plot the GWR residuals on a map
 ggplot() +
-  geom_sf(data=fire_boundaries_orig, color='red') +
+  geom_sf(data=fire_boundaries, color='red') +
   geom_sf(data = simple_fire_data.sf, aes(color = resids)) +
   scale_fill_gradient() +
   ggtitle("GWR Residuals") 
+```
+```{r}
+gwr_list[[1]]
 ```
 
 ```{r}
@@ -1021,3 +1090,11 @@ step_lm <- lm(formula = post_ndvi2 ~ elevation + aspect + mtpi + precip +
 summary(step_lm)
 ```
 
+```{r}
+library(ggcorrplot)
+explanatory_vars <- colnames(df_scaled)[1:6]
+cov_check <- na.omit(st_drop_geometry(df_scaled[explanatory_vars]))
+covariance <- cov(cov_check)
+ggcorrplot(covariance, hc.order = TRUE, lab = TRUE)
+
+```
