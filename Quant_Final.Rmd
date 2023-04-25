@@ -542,7 +542,6 @@ formula <- as.formula(paste(target_col, paste(names(current)[!names(current) %in
   
   
   # varImpPlot(rf_model)
-  
   test_rmse <- sqrt(mean((actual - rf_pred)^2))
   print(c("RMSE on test set:", test_rmse))
   rmse_df[1, target_col] <- test_rmse
