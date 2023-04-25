@@ -28,10 +28,13 @@ library(ggsn)
 library(randomForest) 
 library(tidyr)
 library(sf)
+library(dplyr)
 # library(caret)
 library(doParallel)
 # install.pacakges("rlang")#needed to fix a caret dependency/version issue
 library(caret)
+library(gridExtra)
+library(GWmodel)
 
 # Load shape file
 fire_data<-st_read("Quant_Fire_Data/Quant_Fire_Data.shp")
@@ -50,6 +53,15 @@ simple_fire_data<-st_set_crs(simple_fire_data, 4326)
 
 # Reproject the fire data to EPSG:26913, which represents UTM projection
 simple_projLocs<-st_transform(simple_fire_data, CRS("+init=epsg:26913"))
+
+# Load shape file
+fire_boundaries<-st_read("ForestFires_MLFinal/ForestFires_MLFinal.shp")
+
+# Set the right projection information
+fire_boundaries<-st_set_crs(fire_boundaries, 4326)
+
+# Reproject the fire data to EPSG:26913, which represents UTM projection
+fire_boundaries<-st_transform(fire_boundaries, CRS("+init=epsg:26913"))
 ```
 
 
@@ -64,6 +76,15 @@ fire_data['isTest'] <-'Train'
 fire_data$isTest[fire_data$Event_ID %in% Test_Ids]<-'Test'
 fire_data$isTest[fire_data$Event_ID %in% Val_Ids]<-'Validation'
 
+simple_fire_data['isTest'] <-'Train'
+simple_fire_data$isTest[simple_fire_data$Event_ID %in% Test_Ids]<-'Test'
+simple_fire_data$isTest[simple_fire_data$Event_ID %in% Val_Ids]<-'Validation'
+
+fire_boundaries['isTest'] <-'Train'
+fire_boundaries$isTest[fire_boundaries$Event_ID %in% Test_Ids]<-'Test'
+fire_boundaries$isTest[fire_boundaries$Event_ID %in% Val_Ids]<-'Validation'
+fire_boundaries['isTest'] <- factor(fire_boundaries$isTest)
+
 # Convert fire_date to a Date object
 fire_data$fire_date <- as.Date(paste(fire_data$Year, fire_data$Month, fire_data$Day, sep = "-"))
 
@@ -73,10 +94,7 @@ fire_data$fire_date <- as.Date(paste(fire_data$Year, fire_data$Month, fire_data$
 #   col_date > fire_data$fire_date
 # })]
 my_df <- fire_data %>% st_drop_geometry()
-
-
 ```
-
 
 Apply Seasonal Differencing to control periodicity!
 ```{r, echo=T, eval=T, results='hide'}
@@ -229,6 +247,61 @@ df_scaled <- my_df %>%
 my_df <-df_scaled
 ```
 
+# Temporal Interpolation
+```{r}
+interpolate_data <- df_scaled
+
+interpolate_data <- interpolate_data %>% 
+  select(starts_with("N")) %>%
+  select(!contains(c("before", "after")))
+
+interpolate_data_before <- interpolate_data
+```
+
+```{r}
+library(imputeTS)
+library(lubridate)
+
+
+interpolate_time_series <- function(ts_df) {
+  # Convert date columns to Date class
+  date_cols <- colnames(ts_df)
+  date_cols <- as.Date(paste0("01", substr(date_cols, 2, nchar(date_cols))), format = "%d%b%Y")
+
+  # Transpose data frame
+  transposed_df <- as.data.frame(t(as.matrix(ts_df)))
+  
+  # Convert data frame to time series object
+  ts_data <- ts(transposed_df, start = c(year(date_cols[1]), month(date_cols[1])), frequency = 12)
+  # Interpolate missing values
+  ts_data_interp <- na_interpolation(ts_data, option = "spline")
+
+  # Convert interpolated time series back to data frame
+  df_interp <- as.data.frame(t(ts_data_interp))
+  colnames(df_interp) <- colnames(ts_df)
+  
+  return(df_interp)
+}
+
+interpolated_ndvi <- interpolate_time_series(interpolate_data)
+```
+
+```{r}
+ndvi_ts_plot <- replace(interpolate_data_before, is.na(interpolate_data_before), 0)
+row1_df1 <- as.data.frame(t(as.matrix(ndvi_ts_plot[1, ])))
+row1_df2 <- as.data.frame(t(as.matrix(interpolated_ndvi[1, ])))
+
+# Convert data frame to time series object
+ts_data1 <- ts(row1_df1, start = c(2000, 1), frequency = 12)
+ts_data2 <- ts(row1_df2, start = c(2000, 1), frequency = 12)
+par(mfrow = c(1, 2)) # Set the plot layout to 1 row and 2 columns
+plot(ts_data1, col = "blue", main = "Time Series Where NA is Set to 0")
+plot(ts_data2, col = "purple", main = "Time Series Where NA is Interpolated")
+```
+```{r}
+recalc_cols <- colnames(interpolated_ndvi)
+my_df[, recalc_cols] <- interpolated_ndvi[, recalc_cols]
+```
 Get attributes before and after fire to Split data into pre fire and post fire data
 ```{r, echo=T, eval=T, results='hide'}
 
@@ -542,7 +615,6 @@ formula <- as.formula(paste(target_col, paste(names(current)[!names(current) %in
   
   
   # varImpPlot(rf_model)
-  
   test_rmse <- sqrt(mean((actual - rf_pred)^2))
   print(c("RMSE on test set:", test_rmse))
   rmse_df[1, target_col] <- test_rmse
@@ -564,7 +636,7 @@ print(t(r2_df))
 print(rmse_df)
 
 # par(mar = c(4, 4, 2, 2)) # set margins to be 4 lines on bottom, left, and right, and 2 lines on top
-png(file = "/Users/clairesimpson/Downloads/r2_by_month_seasonally_differenced.png",res = 300,width = 1600, height = 1200)#_seasonally_differenced #width = 1200, height = 800, 
+# png(file = "/Users/clairesimpson/Downloads/r2_by_month_seasonally_differenced.png",res = 300,width = 1600, height = 1200)#_seasonally_differenced #width = 1200, height = 800, 
 
 #plot relationship between post-fire timesteps and accuracy metrics
 plot(t(r2_df), main= "R^2 by Timestep", xlab="Months After Fire", ylab="R^2") #transposed
@@ -574,7 +646,7 @@ dev.copy(png)
 dev.off()
 gc()
 
-png(file = "/Users/clairesimpson/Downloads/rmse_by_month_seasonally_differenced.png",res = 300,width = 1600, height = 1200)#seasonally_differenced
+# png(file = "/Users/clairesimpson/Downloads/rmse_by_month_seasonally_differenced.png",res = 300,width = 1600, height = 1200)#seasonally_differenced
 plot(t(rmse_df), main="RMSE by Timestep", xlab="Months After Fire", ylab="RMSE")
 
 # Copy plot to a file
@@ -594,7 +666,7 @@ pred_cols <- grep("^pred_N\\d{1,2}after$", names(test_Xy),value=TRUE)
 pred_cols
 pred <- t(test_Xy[rand_num,pred_cols])
 
-png(file = "/Users/clairesimpson/Downloads/pred_and_true_ts_for_testsample_seas_dif.png",res=300,width = 1600, height = 1200)
+# png(file = "/Users/clairesimpson/Downloads/pred_and_true_ts_for_testsample_seas_dif.png",res=300,width = 1600, height = 1200)
 
 plot(x, truth,
      type="b",
@@ -674,6 +746,355 @@ ggplot() +
 # save the plot to my downloads folder as a PNG file
 filename <- file.path(Sys.getenv("HOME"), "Downloads", "kmeans_map.png")
 ggsave(filename, device = "png", width = 6, height = 6, dpi = 300)
+```
 
+
+Means comparison between test/train/validation fires
+
+First getting checking the normality of each variable in each group of the fires
+
+```{r}
+
+
+# Get the columns we are interested in testing
+columns <- colnames(simple_fire_data)
+variables <- c(columns[1:9], columns[11:12])
+
+shapiro_dict <- list()
+
+# Split the fire by type, whether it is test, validation, or training
+fires_list <- split(simple_fire_data, simple_fire_data$isTest)
+
+# Loop through each dataframe and test each variable we will compare to check for normality
+for (i in seq_along(fires_list)) {
+  fire_name <- names(fires_list)[i]
+  fires <- fires_list[[i]]
+  for (var in variables) {
+    shapiro_test <- shapiro.test(fires[[var]])
+    p_value <- shapiro_test$p.value
+    name_var = paste0(fire_name, "_", var)
+    shapiro_dict[[name_var]] <- p_value
+  }
+}
+
+# Print out p-values over 0.05 to look at columns that are normally distributed
+for (i in seq_along(shapiro_dict)) {
+  value <- shapiro_dict[[i]]
+  name <- names(shapiro_dict)[i]
+  if (value > 0.05) {
+    print(paste0("Value of ", name, " is ", value))
+  }
+}
+
+```
+
+Most of our columns are not normally distributed, so we will use the Mann Whitney test to compare each column between both the test and validation fires, and the test and training fires. We will compare the training and validation fires seperately against the test fires. 
+
+```{r}
+# Get different fire groups from list of dataframes
+test_fires <- fires_list[[1]]
+train_fires <- fires_list[[2]]
+validation_fires <- fires_list[[3]]
+
+get_wilcox_output <- function(test_fires, train_fires, validation_fires, variables) {
+  train_val_dict <- list()
+  train_test_dict <- list()
+  for (var in variables){
+    train_val_comp = wilcox.test(train_fires[[var]], validation_fires[[var]])$p.value
+    train_test_comp = wilcox.test(train_fires[[var]], test_fires[[var]])$p.value
+    train_val_dict[[var]] <- train_val_comp
+    train_test_dict[[var]] <- train_test_comp
+  }
+  return(list(train_val_dict, train_test_dict))
+}
+
+get_wilcox_list_num_sig <- function(wilcox_pvalues) {
+  return(sum(unlist(wilcox_pvalues) < 0.05))
+}
+
+get_wilcox_list_median_val <- function(wilcox_pvalues) {
+  return(median(unlist(wilcox_pvalues)))
+}
+
+wilcox_out = get_wilcox_output(test_fires, train_fires, validation_fires, variables)
+train_val_dict = wilcox_out[[1]]
+train_test_dict = wilcox_out[[2]]
+print(get_wilcox_list_median_val(train_val_dict))
+print(get_wilcox_list_median_val(train_test_dict))
+print(get_wilcox_list_num_sig(train_val_dict))
+print(get_wilcox_list_num_sig(train_test_dict))
+```
+
+Here we will print out all values below 0.05, which are the variables between the testing and validation data that were significantly different.
+
+```{r}
+# Print out variables that had a p value we care about
+for (i in seq_along(train_val_dict)) {
+  value <- train_val_dict[[i]]
+  name <- names(train_val_dict)[i]
+  if (value < 0.05) {
+    print(paste0("Value of ", name, " is ", value))
+  }
+}
+```
+
+We will print these values out again but for the comparisons between the testing and training data. 
+
+```{r}
+# Print out variables that had a p value we care about
+for (i in seq_along(train_test_dict)) {
+  value <- train_test_dict[[i]]
+  name <- names(train_test_dict)[i]
+  if (value < 0.05) {
+    print(paste0("Value of ", name, " is ", value))
+  }
+}
+```
+
+```{r}
+eventids <- fire_boundaries$Event_ID
+train_fires_list <- list(train_fires)
+test_fires_list <- list(test_fires)
+val_fires_list <- list(validation_fires)
+set.seed(123)
+i <- 2
+# Create 5 random resamples
+while (length(train_fires_list) < 26) {
+  samp <- sample(eventids)
+  train_events <- list()
+  test_events <- list()
+  val_events <- list()
+  for (event in samp){
+    if (length(train_events) == 0){
+      train_events <- append(train_events, event)
+    }
+    else if (sum(simple_fire_data$Event_ID %in% train_events) < nrow(simple_fire_data) * .65){
+      train_events <- append(train_events, event)
+    }
+    else if (length(test_events) == 0){
+      test_events <- append(test_events, event)
+    }
+    else if (sum(simple_fire_data$Event_ID %in% test_events) < nrow(simple_fire_data) * .17){
+      test_events <- append(test_events, event)
+    }
+    else{
+      val_events <- append(val_events, event)
+    }
+  }
+  if ((sum(simple_fire_data$Event_ID %in% val_events)) > 100){
+    train_fire <- simple_fire_data %>%
+      filter(Event_ID %in% train_events)
+    test_fire <- simple_fire_data %>%
+      filter(Event_ID %in% test_events)
+    val_fire <- simple_fire_data %>%
+      filter(Event_ID %in% val_events)
+    valid = TRUE
+    for (var in variables){
+      if (all(is.na(train_fire[[var]])) || all(is.na(test_fire[[var]])) || all(is.na(val_fire[[var]]))){
+        valid = FALSE
+      }
+    }
+    if (valid){
+      train_fires_list[[i]] <- train_fire
+      test_fires_list[[i]] <- test_fire
+      val_fires_list[[i]] <- val_fire
+      i <- i + 1
+    }
+  }
+}
+```
+
+```{r}
+best_combo <- 100
+best_val <- 0
+best_test <- 0
+best_val_med <- 0
+best_test_med <- 0
+best_combo_ix <- 0
+for (i in 1:26){
+  wilcox = get_wilcox_output(test_fires_list[[i]], train_fires_list[[i]], val_fires_list[[i]], variables)
+  train_val = wilcox[[1]]
+  train_test = wilcox[[2]]
+  val_sig <- get_wilcox_list_num_sig(train_val)
+  test_sig <- get_wilcox_list_num_sig(train_test)
+  combo_sig <- val_sig + test_sig
+  if (combo_sig < best_combo){
+    best_combo <- combo_sig
+    best_val <- val_sig
+    best_test <- test_sig
+    best_val_med <- get_wilcox_list_median_val(train_val)
+    best_test_med <- get_wilcox_list_median_val(train_test)
+    best_combo_ix <- i
+  }
+}
+orig_train_val_p <- get_wilcox_list_median_val(train_val_dict)
+orig_train_test_p <- get_wilcox_list_median_val(train_test_dict)
+cat(paste0("The sampling of fires with the lowest difference in variables was combination ", best_combo_ix))
+cat(paste0("\nThis combination of fires had ", best_combo, " variables that were significantly different between the training/validation and the training/testing combinations.\n"))
+cat(paste0(best_val, " of these variables were from the validation fires, and ", best_test, " of these were from the testing fires.\n"))
+cat(paste0("The median P-Value for the validation fire comparison was ", best_val_med, ", while it was ", best_test_med, " for the testing fires.\n"))
+cat(paste0("The original median P-Value for the validation fire comparison was ", orig_train_val_p, ", while it was ", orig_train_test_p, " for the testing fires."))
+```
+
+```{r}
+Test_Ids2 <- unique(test_fires_list[[best_combo_ix]]$Event_ID)
+Val_Ids2 <- unique(val_fires_list[[best_combo_ix]]$Event_ID)
+fire_boundaries['isTest2'] <-'Train'
+fire_boundaries$isTest2[fire_boundaries$Event_ID %in% Test_Ids2]<-'Test'
+fire_boundaries$isTest2[fire_boundaries$Event_ID %in% Val_Ids2]<-'Validation'
+fire_boundaries['isTest2'] <- factor(fire_boundaries$isTest2)
+```
+
+```{r}
+fire_boundaries_center <- st_centroid(fire_boundaries)
+plot1 <- ggplot() + 
+  geom_sf(data=fire_boundaries_center, aes(color=isTest)) + 
+  ggtitle("Original Distribution of Training, Testing\nand Validation Fires") +
+  theme(plot.title = element_text(hjust = 0.5))
+plot2 <- ggplot() + 
+  geom_sf(data=fire_boundaries_center, aes(color=isTest2)) + 
+  ggtitle("Updated Distribution of Training, Testing\nand Validation Fires") +
+  theme(plot.title = element_text(hjust = 0.5))
+grid.arrange(plot1, plot2, ncol = 2)
+```
+
+Interpolation of missing values
+
+```{r}
+# Split the dataframe into a fire by fire list
+
+indv_fire_list <- split(simple_fire_data, simple_fire_data$Event_ID)
+
+# Check for variables with missing data on a fire by fire basis
+fire_with_na <- list()
+
+for (fire_df in indv_fire_list) {
+  na_vars <- list()
+  for (var in variables){
+    na_vals = mean(is.na(fire_df[[var]]))
+    # Ignore ones with all missing data or no missing data
+    if (na_vals != 0 && na_vals != 1){
+      na_vars <- c(na_vars, var)
+    }
+  }
+  if (length(na_vars) != 0 && length(na_vars != 1)){
+    regression_fire_id <- fire_df$Event_ID[[1]]
+    print(fire_df$Event_ID[[1]])
+  }
+}
+
+```
+
+```{r}
+regression_fire <- simple_fire_data[simple_fire_data$Event_ID == regression_fire_id,]
+regression_fire_boundary <- fire_boundaries[fire_boundaries$Event_ID == regression_fire_id,]
+regression_fire <- regression_fire[, !names(regression_fire) %in% "severity"]
+regression_fire$has_na <- apply(regression_fire, 1, function(x) any(is.na(x)))
+regression_fire_sp <- st_as_sf(regression_fire)
+regression_fire_proj<- st_transform(regression_fire_sp, crs = 32613)
+regression_fire_boundary_proj <- st_transform(regression_fire_boundary, crs = 32613)
+```
+
+```{r}
+ggplot() + 
+  geom_sf(data=regression_fire_boundary_proj) + 
+  geom_sf(data=regression_fire_proj, aes(color=has_na)) + 
+  theme(plot.title = element_text(size=22, hjust = 0.5)) + 
+  ggtitle("NA Values Present in Fire")
+```
+
+# Spatial Models
+
+```{r}
+simple_fire_data.sp <- simple_fire_data[, !names(simple_fire_data) %in% "severity"]
+
+simple_fire_data.sp <- na.omit(simple_fire_data.sp)
+
+# Convert the resulting dataframe to a Spatial object
+simple_fire_data.sp <- as(simple_fire_data.sp, "Spatial")
+
+# Run GWR on the cleaned Spatial object
+bw <- bw.gwr(post_ndvi2~slope+chili+elevation+aspect+mtpi+precip+temp+pre_ndvi, data = simple_fire_data.sp, adaptive=TRUE)
+gwr <- gwr.basic(post_ndvi2~slope+chili+elevation+aspect+mtpi+precip+temp+pre_ndvi, data = simple_fire_data.sp, bw = bw, kernel="gaussian", adaptive=TRUE)
+```
+```{r}
+gwr
+```
+
+```{r}
+simple_fire_data.spdf <- as_data_frame(simple_fire_data.sp)
+simple_fire_data.spdf$resids2 = gwr$SDF$residual
+ggplot(data=simple_fire_data.spdf) +
+    geom_point(aes(color=resids2, x=coords.x1, y=coords.x2)) +
+    scale_fill_gradient2() +
+    ggtitle("GWR Residuals")
+```
+
+```{r}
+simple_fire_data.sp <- simple_fire_data[, !names(simple_fire_data) %in% "severity"]
+
+simple_fire_data.sp <- na.omit(simple_fire_data.sp)
+
+# Convert the resulting dataframe to a Spatial object
+simple_fire_data.sp <- as(simple_fire_data.sp, "Spatial")
+
+grouped_data <- split(simple_fire_data.sp, f = simple_fire_data.sp$Event_ID)
+gwr_list <- lapply(grouped_data, function(x) {
+  tryCatch({
+    bw <- bw.gwr(post_ndvi2 ~ slope + chili + elevation + aspect + mtpi + precip + temp + pre_ndvi, data = x, adaptive = TRUE)
+    gwr.basic(post_ndvi2 ~ slope + chili + elevation + aspect + mtpi + precip + temp + pre_ndvi, data = x, bw = bw, kernel = "gaussian", adaptive = TRUE)
+  }, error=function(e) NULL)
+})
+gwr_list <- Filter(Negate(is.null), gwr_list)
+grouped_data_df <- lapply(grouped_data, function(x){
+  as.data.frame(x)
+})
+
+resids <- lapply(gwr_list, function(x) {
+    x$SDF$residual
+})
+```
+
+```{r}
+
+# combine the data frames and residuals into one data frame
+df <- bind_rows(grouped_data_df, .id = "Event_ID")
+good_names <- strsplit(names(gwr_list), " ")
+df <- df[df$Event_ID %in% good_names, ]
+simple_fire_data.sf <- st_as_sf(df, coords = c("coords.x1", "coords.x2"))
+simple_fire_data.sf$resids <- unlist(resids)
+fire_boundaries_reproj<-st_transform(fire_boundaries, CRS("+init=epsg:4326"))
+st_crs(simple_fire_data.sf) <- st_crs(fire_boundaries_reproj)
+
+# Plot the GWR residuals on a map
+ggplot() +
+  geom_sf(data=fire_boundaries, color='red') +
+  geom_sf(data = simple_fire_data.sf, aes(color = resids)) +
+  scale_fill_gradient() +
+  ggtitle("GWR Residuals") 
+```
+```{r}
+gwr_list[[1]]
+```
+
+```{r}
+fire_lm <- lm(post_ndvi2 ~ slope + chili + elevation + aspect + mtpi + precip + temp + pre_ndvi, data = simple_fire_data)
+
+fire_step_lm <- step(fire_lm, direction = "backward")
+summary(fire_step_lm)
+```
+
+```{r}
+step_lm <- lm(formula = post_ndvi2 ~ elevation + aspect + mtpi + precip + 
+    temp + pre_ndvi, data = simple_fire_data)
+summary(step_lm)
+```
+
+```{r}
+library(ggcorrplot)
+explanatory_vars <- colnames(df_scaled)[1:6]
+cov_check <- na.omit(st_drop_geometry(df_scaled[explanatory_vars]))
+covariance <- cov(cov_check)
+ggcorrplot(covariance, hc.order = TRUE, lab = TRUE)
 
 ```
