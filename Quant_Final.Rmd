@@ -81,128 +81,133 @@ my_df <- fire_data %>% st_drop_geometry()
 Apply Seasonal Differencing to control periodicity!
 ```{r, echo=T, eval=T, results='hide'}
 
-# Identify columns with "N" values for each month using regular expressions
-n_cols <- grep("^N[A-Za-z]{3}\\d{4}$", names(my_df),value=TRUE)
+applySeasonalDif=FALSE
 
-# Create a new data frame with the yearly differences between the current month and the same month in the previous year for each row
-yearly_diffs <- data.frame(t(apply(my_df[n_cols], 1, function(x) {
-  # x <- as.numeric(x)
-  len_sel<-length(x[grepl("^NJan\\d{4}$", names(x))])
-  cbind(x[grepl("^NJan\\d{4}$", names(x))][2:len_sel] - x[grepl("^NJan\\d{4}$", names(x))][1:(len_sel-1)],
-        x[grepl("^NFeb\\d{4}$", names(x))][2:len_sel] - x[grepl("^NFeb\\d{4}$", names(x))][1:(len_sel-1)],
-        x[grepl("^NMar\\d{4}$", names(x))][2:len_sel] - x[grepl("^NMar\\d{4}$", names(x))][1:(len_sel-1)],
-        x[grepl("^NApr\\d{4}$", names(x))][2:len_sel] - x[grepl("^NApr\\d{4}$", names(x))][1:(len_sel-1)],
-        x[grepl("^NMay\\d{4}$", names(x))][2:len_sel] - x[grepl("^NMay\\d{4}$", names(x))][1:(len_sel-1)],
-        x[grepl("^NJun\\d{4}$", names(x))][2:len_sel] - x[grepl("^NJun\\d{4}$", names(x))][1:(len_sel-1)],
-        x[grepl("^NJul\\d{4}$", names(x))][2:len_sel] - x[grepl("^NJul\\d{4}$", names(x))][1:(len_sel-1)],
-        x[grepl("^NAug\\d{4}$", names(x))][2:len_sel] - x[grepl("^NAug\\d{4}$", names(x))][1:(len_sel-1)],
-        x[grepl("^NSep\\d{4}$", names(x))][2:len_sel] - x[grepl("^NSep\\d{4}$", names(x))][1:(len_sel-1)],
-        x[grepl("^NOct\\d{4}$", names(x))][2:len_sel] - x[grepl("^NOct\\d{4}$", names(x))][1:(len_sel-1)],
-        x[grepl("^NNov\\d{4}$", names(x))][2:len_sel] - x[grepl("^NNov\\d{4}$", names(x))[1:(len_sel-1)]],
-        x[grepl("^NDec\\d{4}$", names(x))][2:len_sel] - x[grepl("^NDec\\d{4}$", names(x))[1:(len_sel-1)]]
+if (applySeasonalDif){
+  # Identify columns with "N" values for each month using regular expressions
+  n_cols <- grep("^N[A-Za-z]{3}\\d{4}$", names(my_df),value=TRUE)
+  
+  # Create a new data frame with the yearly differences between the current month and the same month in the previous year for each row
+  yearly_diffs <- data.frame(t(apply(my_df[n_cols], 1, function(x) {
+    # x <- as.numeric(x)
+    len_sel<-length(x[grepl("^NJan\\d{4}$", names(x))])
+    cbind(x[grepl("^NJan\\d{4}$", names(x))][2:len_sel] - x[grepl("^NJan\\d{4}$", names(x))][1:(len_sel-1)],
+          x[grepl("^NFeb\\d{4}$", names(x))][2:len_sel] - x[grepl("^NFeb\\d{4}$", names(x))][1:(len_sel-1)],
+          x[grepl("^NMar\\d{4}$", names(x))][2:len_sel] - x[grepl("^NMar\\d{4}$", names(x))][1:(len_sel-1)],
+          x[grepl("^NApr\\d{4}$", names(x))][2:len_sel] - x[grepl("^NApr\\d{4}$", names(x))][1:(len_sel-1)],
+          x[grepl("^NMay\\d{4}$", names(x))][2:len_sel] - x[grepl("^NMay\\d{4}$", names(x))][1:(len_sel-1)],
+          x[grepl("^NJun\\d{4}$", names(x))][2:len_sel] - x[grepl("^NJun\\d{4}$", names(x))][1:(len_sel-1)],
+          x[grepl("^NJul\\d{4}$", names(x))][2:len_sel] - x[grepl("^NJul\\d{4}$", names(x))][1:(len_sel-1)],
+          x[grepl("^NAug\\d{4}$", names(x))][2:len_sel] - x[grepl("^NAug\\d{4}$", names(x))][1:(len_sel-1)],
+          x[grepl("^NSep\\d{4}$", names(x))][2:len_sel] - x[grepl("^NSep\\d{4}$", names(x))][1:(len_sel-1)],
+          x[grepl("^NOct\\d{4}$", names(x))][2:len_sel] - x[grepl("^NOct\\d{4}$", names(x))][1:(len_sel-1)],
+          x[grepl("^NNov\\d{4}$", names(x))][2:len_sel] - x[grepl("^NNov\\d{4}$", names(x))[1:(len_sel-1)]],
+          x[grepl("^NDec\\d{4}$", names(x))][2:len_sel] - x[grepl("^NDec\\d{4}$", names(x))[1:(len_sel-1)]]
+  
+    )
+  })))
+  
+  # Rename columns so that now each column is equal to its original value minus
+  # the value from the previous year's equivalent month
+  #e.g., now NJan2020 column is equal to NJan2020-NJan2019
+  #(NOTE values from 2000 remain the same as there is not a prior year to difference)
+  colnames(yearly_diffs) <-n_cols[13:length(n_cols)] #REN
+  
+  #reassign values in main dataframe to be the new monthly differenced values
+  my_df[names(yearly_diffs)] <- yearly_diffs 
+  
+  ##############################
+  #this is basically what the col name should ACTUALLY be 
+  # # Extract the last two digits of the years being differenced
+  # year_suffix <- substring(n_cols, 7, 9)[13:length(n_cols)]
+  # 
+  # # Subtract 1 from the year suffix to get the previous year's suffix
+  # prev_year_suffix<-substring(n_cols, 7, 9)[1:(length(n_cols)-13)]
+  # 
+  # # Create the new column names using the modified format
+  # new_names <- paste0("N", month.abb, year_suffix, "_", prev_year_suffix)
+  # 
+  # # Rename the columns of the yearly_diffs dataframe
+  # colnames(yearly_diffs) <- new_names
+  
+  
+  ######
+  # Identify columns with "N" values for each month using regular expressions
+  n_cols <- grep("^T[A-Za-z]{3}\\d{4}$", names(my_df),value=TRUE)
+  
+  # Create a new data frame with the yearly differences between the current month and the same month in the previous year for each row
+  yearly_diffs <- data.frame(t(apply(my_df[n_cols], 1, function(x) {
+    # x <- as.numeric(x)
+    len_sel<-length(x[grepl("^TJan\\d{4}$", names(x))])
+    cbind(x[grepl("^TJan\\d{4}$", names(x))][2:len_sel] - x[grepl("^TJan\\d{4}$", names(x))][1:(len_sel-1)],
+          x[grepl("^TFeb\\d{4}$", names(x))][2:len_sel] - x[grepl("^TFeb\\d{4}$", names(x))][1:(len_sel-1)],
+          x[grepl("^TMar\\d{4}$", names(x))][2:len_sel] - x[grepl("^TMar\\d{4}$", names(x))][1:(len_sel-1)],
+          x[grepl("^TApr\\d{4}$", names(x))][2:len_sel] - x[grepl("^TApr\\d{4}$", names(x))][1:(len_sel-1)],
+          x[grepl("^TMay\\d{4}$", names(x))][2:len_sel] - x[grepl("^TMay\\d{4}$", names(x))][1:(len_sel-1)],
+          x[grepl("^TJun\\d{4}$", names(x))][2:len_sel] - x[grepl("^TJun\\d{4}$", names(x))][1:(len_sel-1)],
+          x[grepl("^TJul\\d{4}$", names(x))][2:len_sel] - x[grepl("^TJul\\d{4}$", names(x))][1:(len_sel-1)],
+          x[grepl("^TAug\\d{4}$", names(x))][2:len_sel] - x[grepl("^TAug\\d{4}$", names(x))][1:(len_sel-1)],
+          x[grepl("^TSep\\d{4}$", names(x))][2:len_sel] - x[grepl("^TSep\\d{4}$", names(x))][1:(len_sel-1)],
+          x[grepl("^TOct\\d{4}$", names(x))][2:len_sel] - x[grepl("^TOct\\d{4}$", names(x))][1:(len_sel-1)],
+          x[grepl("^TNov\\d{4}$", names(x))][2:len_sel] - x[grepl("^TNov\\d{4}$", names(x))[1:(len_sel-1)]],
+          x[grepl("^TDec\\d{4}$", names(x))][2:len_sel] - x[grepl("^TDec\\d{4}$", names(x))[1:(len_sel-1)]]
+  
+    )
+  })))
+  
+  # Rename columns so that now each column is equal to its original value minus
+  # the value from the previous year's equivalent month
+  #e.g., now NJan2020 column is equal to NJan2020-NJan2019
+  #(NOTE values from 2000 remain the same as there is not a prior year to difference)
+  colnames(yearly_diffs) <-n_cols[13:length(n_cols)] #REN
+  
+  #reassign values in main dataframe to be the new monthly differenced values
+  my_df[names(yearly_diffs)] <- yearly_diffs 
+  
+  ### PRECIP
+  
+  # Identify columns with "N" values for each month using regular expressions
+  n_cols <- grep("^P[A-Za-z]{3}\\d{4}$", names(my_df),value=TRUE)
+  
+  # Create a new data frame with the yearly differences between the current month and the same month in the previous year for each row
+  yearly_diffs <- data.frame(t(apply(my_df[n_cols], 1, function(x) {
+    # x <- as.numeric(x)
+    len_sel<-length(x[grepl("^PJan\\d{4}$", names(x))])
+    cbind(x[grepl("^PJan\\d{4}$", names(x))][2:len_sel] - x[grepl("^PJan\\d{4}$", names(x))][1:(len_sel-1)],
+          x[grepl("^PFeb\\d{4}$", names(x))][2:len_sel] - x[grepl("^PFeb\\d{4}$", names(x))][1:(len_sel-1)],
+          x[grepl("^PMar\\d{4}$", names(x))][2:len_sel] - x[grepl("^PMar\\d{4}$", names(x))][1:(len_sel-1)],
+          x[grepl("^PApr\\d{4}$", names(x))][2:len_sel] - x[grepl("^PApr\\d{4}$", names(x))][1:(len_sel-1)],
+          x[grepl("^PMay\\d{4}$", names(x))][2:len_sel] - x[grepl("^PMay\\d{4}$", names(x))][1:(len_sel-1)],
+          x[grepl("^PJun\\d{4}$", names(x))][2:len_sel] - x[grepl("^PJun\\d{4}$", names(x))][1:(len_sel-1)],
+          x[grepl("^PJul\\d{4}$", names(x))][2:len_sel] - x[grepl("^PJul\\d{4}$", names(x))][1:(len_sel-1)],
+          x[grepl("^PAug\\d{4}$", names(x))][2:len_sel] - x[grepl("^PAug\\d{4}$", names(x))][1:(len_sel-1)],
+          x[grepl("^PSep\\d{4}$", names(x))][2:len_sel] - x[grepl("^PSep\\d{4}$", names(x))][1:(len_sel-1)],
+          x[grepl("^POct\\d{4}$", names(x))][2:len_sel] - x[grepl("^POct\\d{4}$", names(x))][1:(len_sel-1)],
+          x[grepl("^PNov\\d{4}$", names(x))][2:len_sel] - x[grepl("^PNov\\d{4}$", names(x))[1:(len_sel-1)]],
+          x[grepl("^PDec\\d{4}$", names(x))][2:len_sel] - x[grepl("^PDec\\d{4}$", names(x))[1:(len_sel-1)]]
+  
+    )
+  })))
+  
+  # Rename columns so that now each column is equal to its original value minus
+  # the value from the previous year's equivalent month
+  #e.g., now NJan2020 column is equal to NJan2020-NJan2019
+  #(NOTE values from 2000 remain the same as there is not a prior year to difference)
+  colnames(yearly_diffs) <-n_cols[13:length(n_cols)] #REN
+  
+  #reassign values in main dataframe to be the new monthly differenced values
+  my_df[names(yearly_diffs)] <- yearly_diffs 
+  
+  ###############
+  ### old code to subtract mean from dif cols
+  # all_month_cols <- c(Ncols,Pcols,Tcols)
+  # for (month_col in all_month_cols) { #iterate through all variable mean monthly columns (36)
+  #   my_exp <- paste0("^",substr(month_col, 1, 1), substr(month_col, 2, 4), "\\d{4}$")
+  #   my_df[, grepl(my_exp, names(my_df))] <- 
+  #     my_df[, grepl(my_exp, names(my_df))] - my_df[, month_col]
+  # }
+}
 
-  )
-})))
-
-# Rename columns so that now each column is equal to its original value minus
-# the value from the previous year's equivalent month
-#e.g., now NJan2020 column is equal to NJan2020-NJan2019
-#(NOTE values from 2000 remain the same as there is not a prior year to difference)
-colnames(yearly_diffs) <-n_cols[13:length(n_cols)] #REN
-
-#reassign values in main dataframe to be the new monthly differenced values
-my_df[names(yearly_diffs)] <- yearly_diffs 
-
-##############################
-#this is basically what the col name should ACTUALLY be 
-# # Extract the last two digits of the years being differenced
-# year_suffix <- substring(n_cols, 7, 9)[13:length(n_cols)]
-# 
-# # Subtract 1 from the year suffix to get the previous year's suffix
-# prev_year_suffix<-substring(n_cols, 7, 9)[1:(length(n_cols)-13)]
-# 
-# # Create the new column names using the modified format
-# new_names <- paste0("N", month.abb, year_suffix, "_", prev_year_suffix)
-# 
-# # Rename the columns of the yearly_diffs dataframe
-# colnames(yearly_diffs) <- new_names
-
-
-######
-# Identify columns with "N" values for each month using regular expressions
-n_cols <- grep("^T[A-Za-z]{3}\\d{4}$", names(my_df),value=TRUE)
-
-# Create a new data frame with the yearly differences between the current month and the same month in the previous year for each row
-yearly_diffs <- data.frame(t(apply(my_df[n_cols], 1, function(x) {
-  # x <- as.numeric(x)
-  len_sel<-length(x[grepl("^TJan\\d{4}$", names(x))])
-  cbind(x[grepl("^TJan\\d{4}$", names(x))][2:len_sel] - x[grepl("^TJan\\d{4}$", names(x))][1:(len_sel-1)],
-        x[grepl("^TFeb\\d{4}$", names(x))][2:len_sel] - x[grepl("^TFeb\\d{4}$", names(x))][1:(len_sel-1)],
-        x[grepl("^TMar\\d{4}$", names(x))][2:len_sel] - x[grepl("^TMar\\d{4}$", names(x))][1:(len_sel-1)],
-        x[grepl("^TApr\\d{4}$", names(x))][2:len_sel] - x[grepl("^TApr\\d{4}$", names(x))][1:(len_sel-1)],
-        x[grepl("^TMay\\d{4}$", names(x))][2:len_sel] - x[grepl("^TMay\\d{4}$", names(x))][1:(len_sel-1)],
-        x[grepl("^TJun\\d{4}$", names(x))][2:len_sel] - x[grepl("^TJun\\d{4}$", names(x))][1:(len_sel-1)],
-        x[grepl("^TJul\\d{4}$", names(x))][2:len_sel] - x[grepl("^TJul\\d{4}$", names(x))][1:(len_sel-1)],
-        x[grepl("^TAug\\d{4}$", names(x))][2:len_sel] - x[grepl("^TAug\\d{4}$", names(x))][1:(len_sel-1)],
-        x[grepl("^TSep\\d{4}$", names(x))][2:len_sel] - x[grepl("^TSep\\d{4}$", names(x))][1:(len_sel-1)],
-        x[grepl("^TOct\\d{4}$", names(x))][2:len_sel] - x[grepl("^TOct\\d{4}$", names(x))][1:(len_sel-1)],
-        x[grepl("^TNov\\d{4}$", names(x))][2:len_sel] - x[grepl("^TNov\\d{4}$", names(x))[1:(len_sel-1)]],
-        x[grepl("^TDec\\d{4}$", names(x))][2:len_sel] - x[grepl("^TDec\\d{4}$", names(x))[1:(len_sel-1)]]
-
-  )
-})))
-
-# Rename columns so that now each column is equal to its original value minus
-# the value from the previous year's equivalent month
-#e.g., now NJan2020 column is equal to NJan2020-NJan2019
-#(NOTE values from 2000 remain the same as there is not a prior year to difference)
-colnames(yearly_diffs) <-n_cols[13:length(n_cols)] #REN
-
-#reassign values in main dataframe to be the new monthly differenced values
-my_df[names(yearly_diffs)] <- yearly_diffs 
-
-### PRECIP
-
-# Identify columns with "N" values for each month using regular expressions
-n_cols <- grep("^P[A-Za-z]{3}\\d{4}$", names(my_df),value=TRUE)
-
-# Create a new data frame with the yearly differences between the current month and the same month in the previous year for each row
-yearly_diffs <- data.frame(t(apply(my_df[n_cols], 1, function(x) {
-  # x <- as.numeric(x)
-  len_sel<-length(x[grepl("^PJan\\d{4}$", names(x))])
-  cbind(x[grepl("^PJan\\d{4}$", names(x))][2:len_sel] - x[grepl("^PJan\\d{4}$", names(x))][1:(len_sel-1)],
-        x[grepl("^PFeb\\d{4}$", names(x))][2:len_sel] - x[grepl("^PFeb\\d{4}$", names(x))][1:(len_sel-1)],
-        x[grepl("^PMar\\d{4}$", names(x))][2:len_sel] - x[grepl("^PMar\\d{4}$", names(x))][1:(len_sel-1)],
-        x[grepl("^PApr\\d{4}$", names(x))][2:len_sel] - x[grepl("^PApr\\d{4}$", names(x))][1:(len_sel-1)],
-        x[grepl("^PMay\\d{4}$", names(x))][2:len_sel] - x[grepl("^PMay\\d{4}$", names(x))][1:(len_sel-1)],
-        x[grepl("^PJun\\d{4}$", names(x))][2:len_sel] - x[grepl("^PJun\\d{4}$", names(x))][1:(len_sel-1)],
-        x[grepl("^PJul\\d{4}$", names(x))][2:len_sel] - x[grepl("^PJul\\d{4}$", names(x))][1:(len_sel-1)],
-        x[grepl("^PAug\\d{4}$", names(x))][2:len_sel] - x[grepl("^PAug\\d{4}$", names(x))][1:(len_sel-1)],
-        x[grepl("^PSep\\d{4}$", names(x))][2:len_sel] - x[grepl("^PSep\\d{4}$", names(x))][1:(len_sel-1)],
-        x[grepl("^POct\\d{4}$", names(x))][2:len_sel] - x[grepl("^POct\\d{4}$", names(x))][1:(len_sel-1)],
-        x[grepl("^PNov\\d{4}$", names(x))][2:len_sel] - x[grepl("^PNov\\d{4}$", names(x))[1:(len_sel-1)]],
-        x[grepl("^PDec\\d{4}$", names(x))][2:len_sel] - x[grepl("^PDec\\d{4}$", names(x))[1:(len_sel-1)]]
-
-  )
-})))
-
-# Rename columns so that now each column is equal to its original value minus
-# the value from the previous year's equivalent month
-#e.g., now NJan2020 column is equal to NJan2020-NJan2019
-#(NOTE values from 2000 remain the same as there is not a prior year to difference)
-colnames(yearly_diffs) <-n_cols[13:length(n_cols)] #REN
-
-#reassign values in main dataframe to be the new monthly differenced values
-my_df[names(yearly_diffs)] <- yearly_diffs 
-
-###############
-### old code to subtract mean from dif cols
-# all_month_cols <- c(Ncols,Pcols,Tcols)
-# for (month_col in all_month_cols) { #iterate through all variable mean monthly columns (36)
-#   my_exp <- paste0("^",substr(month_col, 1, 1), substr(month_col, 2, 4), "\\d{4}$")
-#   my_df[, grepl(my_exp, names(my_df))] <- 
-#     my_df[, grepl(my_exp, names(my_df))] - my_df[, month_col]
-# }
 
 ```
 
@@ -338,21 +343,13 @@ Here: ACTUALLY split data into training and test :)
 
 #split into train/test sets (val is part of train right now)
 train_Xy <- my_df %>% dplyr::filter(my_df$isTest != 'Test') #currently this keeps validation rows in training set
-# train_y <- my_df %>% dplyr::filter(my_df$isTest != 'Test')
 test_Xy <- my_df %>% dplyr::filter(my_df$isTest == 'Test')
-# test_y <- my_df %>% dplyr::filter(my_df$isTest == 'Test')
 
 
 # Create input and output data frames
 static_list <- c('slope','chili','elevation','aspect','mtpi')#colnames(my_df)[1:6]
 predictor_cols <- c(attr_list,precip_list, temp_list, static_list) #X (predictor) column names
 target_cols <- c(ndvi_list_post, temp_list_post, ndvi_list_post) #y (target) col names
-# all_cols <- c(target_cols,predictor_cols)
-# train_Xy <- train_Xy[all_cols]
-# test_Xy <- test_Xy[c(predictor_cols,target_cols)]
-# train_y <- test_y[target_cols]
-# test_y <- test_y[target_cols]
-
 
 ```
 
@@ -441,6 +438,19 @@ test_Xy[is.na(test_Xy)] <- 0
 
 ```
 
+SANITY CHECK
+```{r, echo=T, eval=T, results='hide'}
+
+temp <- my_df[2,] #select row (2)
+temp$fire_date
+temp$N1after==temp$NJul2012
+temp$N1before == temp$NJun2012
+
+compare <-fire_data[2,]
+compare$fire_date
+compare$NJun2012 #wont be the same bc my_df has been seasonally differenced + scaled
+
+```
 We now can run the Random Forests model.
 
 Options for RF strategies:
@@ -553,20 +563,21 @@ Visualize the results
 print(t(r2_df))
 print(rmse_df)
 
+# par(mar = c(4, 4, 2, 2)) # set margins to be 4 lines on bottom, left, and right, and 2 lines on top
+png(file = "/Users/clairesimpson/Downloads/r2_by_month_seasonally_differenced.png",res = 300,width = 1600, height = 1200)#_seasonally_differenced #width = 1200, height = 800, 
+
 #plot relationship between post-fire timesteps and accuracy metrics
 plot(t(r2_df), main= "R^2 by Timestep", xlab="Months After Fire", ylab="R^2") #transposed
 
 # Copy plot to a file
-png(file = "/Users/clairesimpson/Downloads/r2_by_month.png")
 dev.copy(png)
 dev.off()
 gc()
 
-
+png(file = "/Users/clairesimpson/Downloads/rmse_by_month_seasonally_differenced.png",res = 300,width = 1600, height = 1200)#seasonally_differenced
 plot(t(rmse_df), main="RMSE by Timestep", xlab="Months After Fire", ylab="RMSE")
 
 # Copy plot to a file
-png(file = "/Users/clairesimpson/Downloads/rmse_by_month.png")
 dev.copy(png)
 dev.off()
 gc()
@@ -574,7 +585,7 @@ gc()
 
 #want to plot an example sample 
 # Create some sample data
-rand_num=10
+rand_num=6
 
 x <- 1:24
 truth_cols <- grep("^N\\d{1,2}after$", names(test_Xy),value=TRUE)
@@ -583,6 +594,7 @@ pred_cols <- grep("^pred_N\\d{1,2}after$", names(test_Xy),value=TRUE)
 pred_cols
 pred <- t(test_Xy[rand_num,pred_cols])
 
+png(file = "/Users/clairesimpson/Downloads/pred_and_true_ts_for_testsample_seas_dif.png",res=300,width = 1600, height = 1200)
 
 plot(x, truth,
      type="b",
@@ -596,7 +608,7 @@ points(x, pred, type='b',col = "red")
 legend("topright", legend = c("True", "Predicted"), col = c("blue", "red"), lty = 1)
 
 # Copy plot to a file
-png(file = "/Users/clairesimpson/Downloads/pred_and_true_ts_for_testsample.png")
+
 dev.copy(png)
 dev.off()
 gc()
